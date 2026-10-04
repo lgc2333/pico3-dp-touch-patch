@@ -7,6 +7,21 @@ end_of_line = crlf
 indent_style = space
 indent_size = 4
 
+# PowerShell 数据文件（PSScriptAnalyzerSettings.psd1 之类）：同样要 BOM + CRLF，
+# 否则 Windows PowerShell 5.1 按 GBK 读，中文注释会乱码
+[*.psd1]
+charset = utf-8-bom
+end_of_line = crlf
+indent_style = space
+indent_size = 4
+
+# 批处理：cmd 见到 BOM 会报错、见到 LF 会把注释当命令执行 ⇒ 无 BOM + CRLF
+[*.bat]
+charset = utf-8
+end_of_line = crlf
+indent_style = space
+indent_size = 4
+
 [*.{sh,js,json}]
 charset = utf-8
 end_of_line = lf

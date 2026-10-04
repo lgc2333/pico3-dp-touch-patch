@@ -1,7 +1,11 @@
-# 行尾策略：避免 Windows / Linux 往返改写脚本字节
+# 行尾策略：避免 Windows / Linux 往返改写脚本字节（与 .editorconfig 一一对应）
 *.ps1 text eol=crlf
+*.psd1 text eol=crlf
+*.bat text eol=crlf
 *.sh  text eol=lf
 *.js  text eol=lf
+*.json text eol=lf
+*.md  text eol=lf
 
 # 二进制（若日后放进仓库）不做文本处理
 *.dll binary

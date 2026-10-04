@@ -1,17 +1,17 @@
 ﻿<#
-  get_deps.ps1 —— 从上游自动拉取并准备依赖二进制
+get_deps.ps1 —— 从上游自动拉取并准备依赖二进制
 
-  产物（下载到本目录，被 .gitignore 忽略）：
-    src/windows/frida-inject        frida 官方 release 16.7.19 · android-arm64（.xz 解压）
-    src/windows/picohaxx.neo3.bin   上游 picohaxx（仓库根预编译二进制）+ Neo 3 适配补丁
+产物（下载到 src/windows/temp/，整目录被 .gitignore 忽略）：
+    temp/frida-inject        frida 官方 release 16.7.19 · android-arm64（.xz 解压）
+    temp/picohaxx.neo3.bin   上游 picohaxx（仓库根预编译二进制）+ Neo 3 适配补丁
 
-  Neo 3 补丁（对上游二进制逐字节校验后原地改写）：
+Neo 3 补丁（对上游二进制逐字节校验后原地改写）：
     0x34b6  18B  '5.9.9-202408300028' → '202409100313' + 6×NUL
-                 固件串改短，兼容 '-' / '_' 两种分隔符（见 docs/06-root.md）
+        固件串改短，兼容 '-' / '_' 两种分隔符（见 docs/06-root.md）
     0x164ef9  1B  0xB0 → 0x50
-                 selinux_state 0xffffff800aabb000 → 0xffffff800aab5000
+        selinux_state 0xffffff800aabb000 → 0xffffff800aab5000
 
-  用法：powershell -ExecutionPolicy Bypass -File src\windows\get_deps.ps1 [-Force]
+用法：powershell -ExecutionPolicy Bypass -File src\windows\get_deps.ps1 [-Force]
 #>
 [CmdletBinding()]
 param(
@@ -19,14 +19,17 @@ param(
     [switch]$Force
 )
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$Here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Inj  = Join-Path $Here 'frida-inject'
-$Haxx = Join-Path $Here 'picohaxx.neo3.bin'
+. "$PSScriptRoot\_utils.ps1"
+$Cache = (Get-RepoPaths -ScriptDir $PSScriptRoot).Cache
+$Inj = Join-Path $Cache 'frida-inject'
+$Haxx = Join-Path $Cache 'picohaxx.neo3.bin'
+New-Item -ItemType Directory -Force $Cache | Out-Null
 
 $FridaVer = '16.7.19'
-$InjName  = "frida-inject-$FridaVer-android-arm64"
+$InjName = "frida-inject-$FridaVer-android-arm64"
 # 直链优先；GitHub 不通时回退镜像
 $InjUrls = @(
     "https://github.com/frida/frida/releases/download/$FridaVer/$InjName.xz",
@@ -45,11 +48,13 @@ function Download([string[]]$urls, [string]$out) {
             if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
                 & curl.exe -fL --retry 3 --connect-timeout 15 -o $out $u
                 if ($LASTEXITCODE -eq 0 -and (Test-Path $out)) { return $true }
-            } else {
+            }
+            else {
                 Invoke-WebRequest -Uri $u -OutFile $out -UseBasicParsing
                 if (Test-Path $out) { return $true }
             }
-        } catch { Write-Host "[!] 失败：$($_.Exception.Message)" -ForegroundColor Yellow }
+        }
+        catch { Write-Host "[!] 失败：$($_.Exception.Message)" -ForegroundColor Yellow }
     }
     return $false
 }
@@ -73,7 +78,10 @@ function Expand-Xz([string]$xz, [string]$out) {
     try {
         & tar -xf $xz -C $out 2>$null
         if ($LASTEXITCODE -eq 0) { return $true }
-    } catch {}
+    }
+    catch {
+        Write-Verbose "tar 起不来（$($_.Exception.Message)），换 xz 解压"
+    }
     Write-Host '[!] tar 解压失败，尝试 xz…' -ForegroundColor Yellow
     $xzc = (Get-Command xz -ErrorAction SilentlyContinue).Source
     if ($xzc) {

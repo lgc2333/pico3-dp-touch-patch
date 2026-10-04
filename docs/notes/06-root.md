@@ -1,7 +1,7 @@
 # 06 · 免解 BL 保数据 root（CVE-2023-33107 / picohaxx）
 
 > 目的：拿到头显 root，**不解 Bootloader、不恢复出厂、不动 userdata**。
-> 工具：`src/windows/picohaxx.neo3.bin`（由 `get_deps.ps1` 自动拉取并打补丁，已适配 Neo 3）。
+> 工具：`src/windows/temp/picohaxx.neo3.bin`（由 `get_deps.ps1` 自动拉取并打补丁，已适配 Neo 3）。
 > 状态：**2026-10-04 已在本机 PICO Neo 3 上实测成功**。
 
 ## ⚠️ 本机没有「原生 adb root」捷径（实测）
@@ -20,6 +20,46 @@ uid=2000(shell)   Enforcing   service.adb.root=0   adbd 属主=shell
 ```
 
 ⇒ **`persist.pvr.adb.root=1` 不会让 adbd 以 root 运行**，picohaxx 每次开机都必需，没有捷径。
+
+## `-- cmd` 与 adbd 无关：提权在进程内完成（2026-10-05 读源码核实）
+
+上游 `root.c` 的 `postExploit()`：
+
+```c
+override_context("u:r:su:s0");       // 先把本进程的 SELinux 上下文切成 su
+if(g_ftpd) ftpd(21);
+if(g_adbd) patch_ADBD();             // ★ 只有 g_adbd 才碰 adbd
+if(g_custom_spawn_args) {            //   "-- cmd" 走这里
+    ...
+    int r = execvp(args[0], args);   // ★ 同一个进程直接 exec，继承已提权的 cred
+}
+```
+
+提权本身是日志里的 `[5] Patching UID and CAPS in-place.` —— 对**自己 task 的 `cred`**（`current_task_phys + CRED_OFFSET`）就地改写。
+
+⇒ **adbd 是不是 root，完全不影响 `-- cmd` 的权限**。`-noadbd`（由 `picohaxx.c` 的 `cfg_bool()` 展开成 `-adbd` / `-noadbd`）只是把 `g_adbd` 置 0 ⇒ 不执行 `patch_ADBD()` ⇒ 不会 `kill_adbd()` / `exit(21)`。
+⇒ 所以 Termux 路径能「提权 + 注入」一次调用做完；PC 路径仍要分两步（它要的正是 root adbd）。
+
+**旁证（怎么判断某个 `frida-inject` 是不是 root）**：非 root 的 `frida-inject` **一定**先往 stderr 打 `Unable to save SELinux policy to the kernel: Permission denied`（本机实测，rc=4）⇒ 日志里没有这行，就说明它是 root。
+
+## ⚠️ exploit 是偶发失败的：同一开机跑多了会稳定挂
+
+同一开机里前几次 `picohaxx` 都成功，跑多了之后会在提权阶段**确定性**中止：
+
+```
+[0] Starting Privilege Escalation...
+[+] Offsets matched: 202409100313
+selinux_enforcing: ffffff3035785c01          ← 标定跑偏时的假地址（正常形如 ffffff800aab5001）
+[!!!] FATAL: SPINLOCK TIMEOUT at root.c:206  ← 读内核 spinlock 超时，它自己中止
+```
+
+关键点：
+
+- **不会写坏东西**：日志里 `8-bit WRITE … [PATCH] …` 那三行不会出现 —— 它在写之前就停了，系统完好（实测 adbd/服务都照常）。
+- **重启头显就恢复**（每个 run 都会留下喷子进程 + `pte_dummy`/PTE 垃圾，标定会被带偏；root 本来就是一次性的）。
+- **紧接着重试就成功**：实测同一条命令失败后，隔几十秒再跑一次就拿到了正确标定（`selinux_enforcing: ffffff800aab5001`）并一路走完（root + 注入 `已注入 pid=…`）⇒ 所以"重试"是正解，别当成坏掉。
+- 根因（读源码）：`escalate_privs()` 一上来就用 exploit 自己的读写原语取表里的 `selinux_state` 常量；那次 2.5 TB 别名映射落点不好时，连这个常量都被读成垃圾 ⇒ 后面的写跑到错页 ⇒ spinlock 超时 ⇒ 中止。
+- 所以脚本都带重试：`start_touch.sh` 重试**注入器**；Termux 流程重试 `picohaxx -adbd`（两次不成才回退 `-noadbd`）。看到 `SPINLOCK TIMEOUT` 就再跑一次，或者重启头显。
 
 ## ⚠️ 陷阱：picohaxx 会让无线 adb 掉线
 
@@ -48,23 +88,21 @@ kill_adbd();                                      // ← pkill -9 adbd
 04:15:12.732  AdbDebuggingManager: Read failed with count -1
 ```
 
-**但是**（重要更正）：
+**但是**（2026-10-05 更正）：
 
 - **`adb tcpip 5555` 本身没问题**（实测单独跑：adbd 重启后仍以 root 跑、仍监听 `:::5555`）
 - **从 PC 走 TCP 跑 picohaxx 也没问题**（实测成功：`uid=0(root)`、adbd root、TCP 正常）
-- **只有「在 Termux 里跑 adb」这条路会卡住**（adb 客户端在设备本机、走 loopback，
-  adbd 重启后条目变 `offline`，`disconnect`+`connect` 重试 6 次仍连不回）
 
-### 结论：不要用 adb，改用 picohaxx 自带的 root 执行能力
+### 结论：Termux 侧**也**走 adb（借 adbd 跑），但客户端必须换端口
 
-`picohaxx -noftpd -- <cmd>` 会以 root 执行 `<cmd>`（实测 `execve argv[]` 确认）。
-⇒ **Termux 里直接一条命令搞定「提权 + 注入」**，完全不碰 adb：
+之前"设备本机 adb 连不回"是两件事叠在一起，都不是"adb 这条路不行"：
 
-```sh
-~/picohaxx -noftpd -- /data/local/tmp/start_touch.sh
-```
+1. **补成 root 的 adbd 自己占着 `127.0.0.1:5037`**（实测：`adbd --root_seclabel=u:r:su:s0` 的 fd 就指着那个 LISTEN socket）
+   ⇒ 设备端 adb 客户端再起 server 会 `could not install *smartsocket* listener: Address already in use` 然后 abort
+   ⇒ **让客户端的 server 换端口**：`export ANDROID_ADB_SERVER_PORT=5038`（或每条命令 `adb -P 5038 …`），本机设备照样认成 `emulator-5554`。
+2. **Termux 直跑注入器必然失败**：app 进程的 seccomp 过滤器跨 `exec` 继承 ⇒ `frida-inject` 被 SIGSYS 打死（`rc=159`、日志恒 0 字节）。
 
-详见 `src/termux/`。
+⇒ 所以 Termux 流程是「借 adbd 跑整条链 + 客户端换 server 端口」，细节见 `docs/notes/09-termux.md`。
 
 ### 另外两个坑（实测）
 

@@ -139,10 +139,7 @@ report[50] 取值分布: {0x0:23318, 0x2:986, 0x8:874, 0x20:762, 0x80:951, 0xa:1
 
 脚本在 `src/termux/`，已推到设备 `/sdcard/Download/pico_touch/`。
 
-```sh
-# 一次性：装 Termux → termux-setup-storage → cp /sdcard/Download/pico_touch/termux_*.sh ~/ → bash ~/termux_setup.sh
-bash ~/termux_touch.sh          # 每次开机
-```
+流程（PC 侧 push + Termux 初始化 + 每次开机）以 [`09-termux.md`](09-termux.md) 为唯一权威，这里不重复。
 
 **实测证据**（app 域里跑完整条利用链）：
 
@@ -159,14 +156,11 @@ bash ~/termux_touch.sh          # 每次开机
 
 ⇒ **app 域能开 `/dev/kgsl-3d0`、能 fork 80 进程、能 mmap 2560 GB PTE、能赢竞态** —— 全部验证。
 
-**关键设计**（`src/termux/termux_touch.sh`）：
+**关键设计**（`src/termux/termux_touch.sh`，2026-10-05 重写）：
 
-1. **不用 adb**：`picohaxx -noftpd -- <cmd>` 本身就能以 root 执行命令
-2. **分两步**：`patch_ADBD()` 末尾是 `exit(21)` ⇒ 第一次（没 root）跑完补丁就退出，
-   `-- <cmd>` 不会执行。所以：先 `picohaxx -noftpd` 提权，再 `picohaxx -noftpd -- start_touch.sh`
-3. **`settings` shim**：app 域调 `settings` 被 SELinux 拦，而 picohaxx 的 fallback
-   （读 `ro.pvr.internal.version`）在编译版实测返回空串
-   ⇒ 在 PATH 前面放一个假 `settings` 直接吐版本串
+1. **整条链交给设备自己的 adbd 跑**：Termux 是 app 进程，seccomp 过滤器跨 `exec` 继承且不可撤销 ⇒ 在那里跑 `frida-inject` 会被内核 SIGSYS 打死（`rc=159`、日志恒 0 字节）。adbd 由 init 起、`Seccomp: 0`。
+2. **提权 = 把 adbd 补成 root**：`adb tcpip 5555` → `picohaxx -adbd`；此后设备端 adb 就是 root，注入只剩一句 `adb shell start_touch.sh`；没成才回退 `picohaxx -noadbd -- start_touch.sh`。
+3. **客户端 server 换端口**：补成 root 的 adbd 自己占着 `127.0.0.1:5037` ⇒ 客户端用 `ANDROID_ADB_SERVER_PORT=5038`，本机设备照样认成 `emulator-5554`。
+4. **固件串不再需要 shim**：`settings get system confirm_smartisan_version` 在 shell 域读得到，只有 app 域被 SELinux 拦。
 
-**唯一未实测**：冷启动时第 1 步的 adbd 补丁（`kill_adbd` + `exit(21)`）—— 对 Termux 路径无影响
-（不用 adb），第 2 步会正常接上。
+细节（含退出码对照表、exploit 偶发失败的处理）在 [`09-termux.md`](09-termux.md)。

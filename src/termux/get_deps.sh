@@ -1,21 +1,23 @@
 #!/bin/sh
 # get_deps.sh —— 从上游自动拉取并准备依赖二进制（Linux / macOS / Termux）
 #
-# 产物（下载到本目录，被 .gitignore 忽略）：
-#   src/termux/frida-inject        frida 16.7.19 · android-arm64（.xz 解压）
-#   src/termux/picohaxx.neo3.bin   上游 picohaxx + Neo 3 适配补丁
+# 产物（下载到本目录 temp/，整目录被 .gitignore 忽略）：
+#   src/termux/temp/frida-inject        frida 16.7.19 · android-arm64（.xz 解压）
+#   src/termux/temp/picohaxx.neo3.bin   上游 picohaxx + Neo 3 适配补丁
 #
 # Neo 3 补丁（逐字节校验后原地改写）：
 #   0x34b6  18B  '5.9.9-202408300028' → '202409100313' + 6×NUL
 #   0x164ef9  1B  0xB0 → 0x50
 #
-# 依赖：curl、xz、dd（Termux：pkg install -y curl xz-utils coreutils）
+# 依赖：curl、xz、dd（Termux 里缺了会自动 pkg install，其它平台自己装）
 # 用法：sh src/termux/get_deps.sh
 set -e
 
 HERE=$(cd "$(dirname "$0")" && pwd)
-INJ="$HERE/frida-inject"
-HAX="$HERE/picohaxx.neo3.bin"
+CACHE="$HERE/temp"
+INJ="$CACHE/frida-inject"
+HAX="$CACHE/picohaxx.neo3.bin"
+mkdir -p "$CACHE"
 
 FVER=16.7.19
 INJNAME="frida-inject-$FVER-android-arm64"
@@ -23,7 +25,21 @@ INJ_URLS="https://github.com/frida/frida/releases/download/$FVER/$INJNAME.xz htt
 HAX_MD5=734ddd6f8157378b2785183c5cfafa94
 HAX_URLS="https://raw.githubusercontent.com/264312431/picohaxx/main/picohaxx https://ghfast.top/https://raw.githubusercontent.com/264312431/picohaxx/main/picohaxx"
 
-command -v curl >/dev/null 2>&1 || { echo "[X] 需要 curl"; exit 1; }
+# 缺命令就自己装（Termux：pkg install；没有 pkg 就报错让用户自己装）
+need() {  # need <cmd> <pkg...>
+    _cmd=$1; shift
+    if command -v "$_cmd" >/dev/null 2>&1; then return 0; fi
+    if command -v pkg >/dev/null 2>&1; then
+        echo "[*] 缺 $_cmd，pkg install -y $* ……"
+        pkg install -y "$@" >/dev/null 2>&1 || true
+    fi
+    if command -v "$_cmd" >/dev/null 2>&1; then return 0; fi
+    return 1
+}
+
+need curl curl     || { echo '[X] 需要 curl（Termux 里：pkg install -y curl）'; exit 1; }
+need xz  xz-utils  || echo '[!] 没有 xz，退回 tar 解压（多 block 的 .xz 可能解不开）'
+need md5sum coreutils || echo '[!] 没有 md5sum，校验会失败'
 
 TMP=$(mktemp -d 2>/dev/null || { d=/tmp/pico_deps.$$; mkdir -p "$d"; echo "$d"; })
 trap 'rm -rf "$TMP"' EXIT

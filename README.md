@@ -35,60 +35,34 @@ A/B/X/Y、扳机、摇杆顶，六处触摸全部正常。
 
 PC 上装好 **adb**（Android platform-tools，并加进 PATH）。
 
-### 方式 A · 有 PC（推荐第一次用）
+### 1. 给 PC 驱动打补丁（一次性）
 
-#### 给 PC 驱动打补丁（一次性）
+> 只想恢复 A/B/X/Y 的触摸，不需要扳机与摇杆的？那这一步可以跳过。
 
 1. **完全退出** SteamVR 和 Business Streaming DP；
-2. 以**管理员**打开 PowerShell，进项目目录运行：
+2. 双击 `src\windows\patch_driver.bat`，在 UAC 弹窗点「是」；它会先备份、逐字节校验再写入；只做一次。
+   `driver_pico.dll` 由脚本自己定位，找不到就直接问你要路径（粘贴进去即可，回车退出）。想跳过猜测也可以带参数 `-Dll <DLL路径>`。
 
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File src\windows\patch_driver.ps1
-   ```
-
-   它会先备份、逐字节校验再写入；只做一次。（装在非默认位置时加 `-Dll <driver_pico.dll 路径>`。）
-   只想恢复 A/B/X/Y 的触摸？这一步可以跳过。
-
-#### 头显每次开机：注入头显
+### 2. 头显每次开机：注入头显
 
 1. 在头显 **设置 → 开发者选项** 里**打开 adb**（「USB 调试」或「无线调试」；该设备 adb 免授权，无线无需配对）；
 2. 连接头显：**USB 线**直连，或让头显与 PC 连同一网络（PC 开热点最省事）；
-3. 打开 PowerShell，进项目目录运行：
-
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File src\windows\pico_touch.ps1
-   ```
-
+3. 双击 `src\windows\pico_touch.bat`（跑完窗口会停住等你按键；要指定序列号就带参数 `-Serial <序列号>`）。
 4. 脚本会自动完成：找头显 → 拿临时 root → 推送文件 → 注入。缺的依赖（frida-inject、picohaxx）会从上游自动下载，**需要联网**。
 5. 看到 `[✓] 完成` 即可，之后能拔线、关窗口（注入跑在头显本地）。
 
-### 方式 B · 头显装 Termux（以后开机不用 PC）
+> **想以后开机不开 PC？**
+>
+> 先在头显上装 **Termux**（PC 上 `adb` 安装，或从头显侧载 APK），  
+> 之后在运行上面步骤时就会顺手在 Termux 里注册短命令，以后开机的提权**完全在头显侧完成、不依赖 PC**，点进 Termux 里敲下面的命令进去回车就搞定了：
+>
+> ```shell
+> dptouch
+> ```
+>
+> 没装 Termux 时脚本什么都不装、也不给命令；兜底装法与 adbd/注入机制见 [`docs/notes/09-termux.md`](docs/notes/09-termux.md)。
 
-前置：先按「方式 A」跑通一次，设备端文件就位后再做下面几步。
-
-1. 在头显上装 **Termux**（PC 上 `adb install <termux-arm64.apk>`，或从头显侧载 APK）；
-2. 在 PC 上把 Termux 用到的文件放进头显存储：
-
-   ```bash
-   adb push src/termux/termux_setup.sh src/termux/termux_touch.sh /sdcard/Download/pico_touch/
-   adb push src/windows/picohaxx.neo3.bin /sdcard/Download/pico_touch/picohaxx
-   ```
-
-3. 打开 Termux，执行一次：
-
-   ```sh
-   termux-setup-storage          # 弹权限框，允许
-   cp /sdcard/Download/pico_touch/termux_*.sh ~/
-   bash ~/termux_setup.sh
-   ```
-
-4. 以后**每次开机**在 Termux 里跑：
-
-   ```sh
-   bash ~/termux_touch.sh
-   ```
-
-原理与「两步提权」等细节见 [`docs/notes/09-termux.md`](docs/notes/09-termux.md)。
+> 只想推文件、不提权也不注入？只双击运行 `src\windows\push.bat` 即可。
 
 ## 确认成功
 
@@ -96,11 +70,11 @@ SteamVR → 设置 → 控制器 → **测试控制器**：手指依次搭在 A/
 
 ## 还原 / 卸载
 
-| 改动                      | 怎么还原                                                                   |
-| ------------------------- | -------------------------------------------------------------------------- |
-| PC 驱动（唯一的持久改动） | 把同目录的 `driver_pico.dll.orig` 复制回 `driver_pico.dll`；或重装 DP 驱动 |
-| 头显 root + 注入          | 重启即失效；也可 `picohaxx -unroot`                                        |
-| 推送到头显的文件          | 删除 `/data/local/tmp/{picohaxx,frida-inject,hook.js,start_touch.sh}`      |
+| 改动                      | 怎么还原                                                                                            |
+| ------------------------- | --------------------------------------------------------------------------------------------------- |
+| PC 驱动（唯一的持久改动） | 把同目录的 `driver_pico.dll.orig` 复制回 `driver_pico.dll`；或重装 DP 驱动                          |
+| 头显 root + 注入          | 重启即失效；也可 `picohaxx -unroot`                                                                 |
+| 推送到头显的文件          | 删除 `/data/local/tmp/{frida-inject,hook.js,start_touch.sh}`、`~/pico_touch`、`$PREFIX/bin/dptouch` |
 
 ## 常见问题
 
