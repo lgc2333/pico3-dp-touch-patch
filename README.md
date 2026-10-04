@@ -49,18 +49,18 @@ PC 上装好 **adb**（Android platform-tools，并加进 PATH）。
 2. 连接头显：**USB 线**直连，或让头显与 PC 连同一网络（PC 开热点最省事）；
 3. 双击 `src\windows\pico_touch.bat`（跑完窗口会停住等你按键；要指定序列号就带参数 `-Serial <序列号>`）。
 4. 脚本会自动完成：找头显 → 拿临时 root → 推送文件 → 注入。缺的依赖（frida-inject、picohaxx）会从上游自动下载，**需要联网**。
-5. 看到 `[✓] 完成` 即可，之后能拔线、关窗口（注入跑在头显本地）。
+5. 看到 `[+] 完成` 即可，之后能拔线、关窗口（注入跑在头显本地）。
 
-> **想以后开机不开 PC？**
+> **懒得连接 PC 完成设备侧 hook？**
 >
-> 先在头显上装 **Termux**（PC 上 `adb` 安装，或从头显侧载 APK），  
-> 之后在运行上面步骤时就会顺手在 Termux 里注册短命令，以后开机的提权**完全在头显侧完成、不依赖 PC**，点进 Termux 里敲下面的命令进去回车就搞定了：
+> 先在头显上装 **Termux**（PC 上 `adb` 安装，或从头显侧载 APK），之后在运行上面步骤时就会顺手把设备侧脚本装进 Termux；
+> 以后每次开机点进 Termux 敲一行之后回车就行（提权**完全在头显侧完成、不依赖 PC**）：
 >
 > ```shell
 > dptouch
 > ```
 >
-> 没装 Termux 时脚本什么都不装、也不给命令；兜底装法与 adbd/注入机制见 [`docs/notes/09-termux.md`](docs/notes/09-termux.md)。
+> 没装 Termux 时脚本什么都不装；流程与机制见 [`docs/notes/09-termux.md`](docs/notes/09-termux.md)。
 
 > 只想推文件、不提权也不注入？只双击运行 `src\windows\push.bat` 即可。
 

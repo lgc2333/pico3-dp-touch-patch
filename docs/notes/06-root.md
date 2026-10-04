@@ -38,13 +38,15 @@ if(g_custom_spawn_args) {            //   "-- cmd" 走这里
 提权本身是日志里的 `[5] Patching UID and CAPS in-place.` —— 对**自己 task 的 `cred`**（`current_task_phys + CRED_OFFSET`）就地改写。
 
 ⇒ **adbd 是不是 root，完全不影响 `-- cmd` 的权限**。`-noadbd`（由 `picohaxx.c` 的 `cfg_bool()` 展开成 `-adbd` / `-noadbd`）只是把 `g_adbd` 置 0 ⇒ 不执行 `patch_ADBD()` ⇒ 不会 `kill_adbd()` / `exit(21)`。
-⇒ 所以 Termux 路径能「提权 + 注入」一次调用做完；PC 路径仍要分两步（它要的正是 root adbd）。
+⇒ **默认就是补 adbd**（`g_adbd` 默认为 1）：PC 侧那条 `picohaxx -noftpd -- /system/bin/id` 没传 `-adbd`，实测照样打了 `patching adbd... adb root is unlocked!` ⇒ 传不传 `-adbd` 只影响 `-- cmd` 那步；Termux 侧因此直接照搬 PC 的 argv（哪条实测能过用哪条）。
+⇒ 所以 `-- cmd` 那条命令只在**已经 root**、且传了 `-noadbd`（`g_adbd=0` ⇒ 不补 adbd ⇒ 不 `exit(21)`）时才真的会跑；第一次拿 root 时它跑不到。
 
 **旁证（怎么判断某个 `frida-inject` 是不是 root）**：非 root 的 `frida-inject` **一定**先往 stderr 打 `Unable to save SELinux policy to the kernel: Permission denied`（本机实测，rc=4）⇒ 日志里没有这行，就说明它是 root。
 
-## ⚠️ exploit 是偶发失败的：同一开机跑多了会稳定挂
+## ⚠️ exploit 失败的两种表现（`FATAL: SPINLOCK TIMEOUT at root.c:206`）
 
-同一开机里前几次 `picohaxx` 都成功，跑多了之后会在提权阶段**确定性**中止：
+同一句 `FATAL` 有两种表现：**① 同一开机里跑多了就挂**（前几次都成功，之后在提权阶段确定性中止）；
+**② 100% 每次必挂**（见下面那条「另一种表现」）。表现 ①：
 
 ```
 [0] Starting Privilege Escalation...
@@ -57,9 +59,29 @@ selinux_enforcing: ffffff3035785c01          ← 标定跑偏时的假地址（�
 
 - **不会写坏东西**：日志里 `8-bit WRITE … [PATCH] …` 那三行不会出现 —— 它在写之前就停了，系统完好（实测 adbd/服务都照常）。
 - **重启头显就恢复**（每个 run 都会留下喷子进程 + `pte_dummy`/PTE 垃圾，标定会被带偏；root 本来就是一次性的）。
-- **紧接着重试就成功**：实测同一条命令失败后，隔几十秒再跑一次就拿到了正确标定（`selinux_enforcing: ffffff800aab5001`）并一路走完（root + 注入 `已注入 pid=…`）⇒ 所以"重试"是正解，别当成坏掉。
-- 根因（读源码）：`escalate_privs()` 一上来就用 exploit 自己的读写原语取表里的 `selinux_state` 常量；那次 2.5 TB 别名映射落点不好时，连这个常量都被读成垃圾 ⇒ 后面的写跑到错页 ⇒ spinlock 超时 ⇒ 中止。
-- 所以脚本都带重试：`start_touch.sh` 重试**注入器**；Termux 流程重试 `picohaxx -adbd`（两次不成才回退 `-noadbd`）。看到 `SPINLOCK TIMEOUT` 就再跑一次，或者重启头显。
+- **紧接着重试有时就成**：实测同一条命令失败后，隔几十秒再跑一次拿到了正确标定（`selinux_enforcing: ffffff800aab5001`）并一路走完（root + 注入 `已注入 pid=…`）⇒ 别急着当成坏掉；但若是下一条那种 100% 复现，重试没用。
+- 根因（**推测**，读源码）：`escalate_privs()` 一上来就用 exploit 自己的读写原语取表里的 `selinux_state`
+  常量；2.5 TB 别名映射落点不好时，连这个常量都被读成垃圾 ⇒ 后面的写跑到错页 ⇒ spinlock 超时 ⇒ 中止。
+- **另一种表现：100% 复现，跟"跑多了"无关** —— 有段时间 Termux 里跑必挂（重连、重启都不救），
+  最后是**清掉 Termux 数据 + 重新 `pkg update`/`pkg upgrade` + 从 PC 侧重装 kit**直接好的
+  （清数据会把 `~/pico_touch` 一并清掉，所以 kit 只能用 PC 侧 `push.bat` 重推）。
+  机理没查清（可疑：那套包/环境让 exploit 的标定环境不干净），但结论很实用：
+  **反复 100% FATAL 就先怀疑 Termux 那套环境**，别只盯着 exploit。
+
+脚本现在**不重试、也不走回落**：一见 `FATAL` 就收工并留一份 `/data/local/tmp/picohaxx.log` 供判读
+（中止时 adbd 压根没被动过：既不掉线也不变 root）⇒ 拿 root 改用 PC，或重启头显 / 按上面那条清 Termux 环境。
+
+## Termux（app uid）里直跑 picohaxx：能做，但认固件要 `settings` 垫片
+
+认固件那步跑 `settings get system confirm_smartisan_version`（走 SettingsService 的 **shell command**），
+app uid 没有 `INTERACT_ACROSS_USERS` ⇒ `Permission Denial`；它自己的 fallback 读 `ro.pvr.internal.version`
+在编译版里实测拿到**空串** ⇒ `Unsupported Firmware version!` 当场放弃。
+⇒ 往 PATH 最前面放个假 `settings`（只对 `confirm_smartisan_version` 这一问吐版本串，其它转给真 `settings`）
+就能过这一步 —— **app 域直跑提权是可行的**，当年就是这么跑通的。
+
+不划算的是另一半：**注入器在 app 域必被 seccomp SIGSYS 杀**（`rc=159`，见 [`09-termux.md`](09-termux.md)）
+⇒ 注入无论如何得交给 adbd。所以 `dptouch` 只走 adbd 一条路（提权和注入共用同一条线，省掉垫片这层），
+直跑 + 垫片留作排障手段。
 
 ## ⚠️ 陷阱：picohaxx 会让无线 adb 掉线
 
@@ -93,35 +115,16 @@ kill_adbd();                                      // ← pkill -9 adbd
 - **`adb tcpip 5555` 本身没问题**（实测单独跑：adbd 重启后仍以 root 跑、仍监听 `:::5555`）
 - **从 PC 走 TCP 跑 picohaxx 也没问题**（实测成功：`uid=0(root)`、adbd root、TCP 正常）
 
-### 结论：Termux 侧**也**走 adb（借 adbd 跑），但客户端必须换端口
+### 结论：Termux 侧也走 adb（借 adbd 跑），客户端换端口
 
-之前"设备本机 adb 连不回"是两件事叠在一起，都不是"adb 这条路不行"：
+补成 root 的 adbd 自己占着 `127.0.0.1:5037`（实测：`adbd --root_seclabel=u:r:su:s0` 的 fd 就指着那个 LISTEN socket）
+⇒ 设备端 adb 客户端再起 server 会 `could not install *smartsocket* listener: Address already in use` 然后 abort
+⇒ 换成 `ANDROID_ADB_SERVER_PORT=5038`。流程细节见 [`09-termux.md`](09-termux.md)。
 
-1. **补成 root 的 adbd 自己占着 `127.0.0.1:5037`**（实测：`adbd --root_seclabel=u:r:su:s0` 的 fd 就指着那个 LISTEN socket）
-   ⇒ 设备端 adb 客户端再起 server 会 `could not install *smartsocket* listener: Address already in use` 然后 abort
-   ⇒ **让客户端的 server 换端口**：`export ANDROID_ADB_SERVER_PORT=5038`（或每条命令 `adb -P 5038 …`），本机设备照样认成 `emulator-5554`。
-2. **Termux 直跑注入器必然失败**：app 进程的 seccomp 过滤器跨 `exec` 继承 ⇒ `frida-inject` 被 SIGSYS 打死（`rc=159`、日志恒 0 字节）。
+### 另一个坑：`patch_ADBD()` 末尾 `exit(21)`
 
-⇒ 所以 Termux 流程是「借 adbd 跑整条链 + 客户端换 server 端口」，细节见 `docs/notes/09-termux.md`。
-
-### 另外两个坑（实测）
-
-**① `patch_ADBD()` 末尾 `exit(21)`** —— `kill_adbd()` 就是 `system("pkill -9 adbd"); exit(21);`
-⇒ **第一次跑（原本没 root）时，`picohaxx -- <cmd>` 的 `<cmd>` 根本不会执行**。
-必须分两步：先 `picohaxx -noftpd` 提权，再 `picohaxx -noftpd -- <cmd>`（第二次已是 root，跳过补丁）。
-
-**② app 域读不到 `settings`，而 fallback 是坏的** —— Termux 里跑会：
-
-```
-[*] Device Firmware Version: cmd: Failure calling service settings: Failed transaction (2147483646)
-[-] Unsupported Firmware version!
-```
-
-源码的 fallback 读 `ro.pvr.internal.version` 并把 `_` 换 `-`，
-但**编译版实测返回空串**（`Device Firmware Version: ` 后直接 Unsupported）。
-⇒ 用 **PATH shim**（假 `settings` 直接吐版本串）绕过。
-另外已把 `offsets.h` 表串改成只留 build 时间戳 `202409100313`，
-这样短横线/下划线两种形式都能 `strstr` 命中（原表只有短横线形式）。
+`kill_adbd()` 就是 `system("pkill -9 adbd"); exit(21);` ⇒ **第一次跑（原本没 root）时，`picohaxx -- <cmd>` 的
+`<cmd>` 根本不会执行**（补 adbd 是默认行为）。别指望「提权 + 注入」一次调用做完：先拿 root，再注入。
 
 ## 结论
 

@@ -9,15 +9,13 @@ patch_driver.ps1 —— 给 PICO DP 驱动打补丁：让扳机 / 摇杆顶的�
 自动备份为 driver_pico.dll.orig，并校验原字节。
 
 参数：
-    -Dll  目标 driver_pico.dll 路径；不给就自己找：注册表卸载项 → OpenVR
-            external_drivers → 常见安装位置，全找不到就在命令行问你
+    -Dll  目标 driver_pico.dll 路径（默认自动探测）
 
 用法：双击 src\windows\patch_driver.bat（或直接跑本脚本）
         没提权时脚本会自己弹 UAC 提权，提权窗口用 cmd /k 保住好读输出
 #>
 [CmdletBinding()]
 param(
-    # 目标驱动 DLL；不传则按常见安装位置自动探测
     [string]$Dll
 )
 $ErrorActionPreference = 'Stop'
@@ -25,10 +23,8 @@ Set-StrictMode -Version Latest
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # --- 定位 driver_pico.dll ---
-# 顺序：-Dll 参数 → 注册表（企业串流是 Inno 安装，卸载项里有安装目录；DisplayName 是中文，
-#       所以只认 Inno Setup: App Path / InstallLocation，不按名字找）
-#       → OpenVR 的 external_drivers（SteamVR 自己读的那份登记，直接就是驱动目录）
-#       → 常见安装位置 → 都失败就问用户
+# 顺序：-Dll → 注册表卸载项（企业串流是 Inno 安装；DisplayName 是中文，只认 Inno Setup: App Path / InstallLocation）
+#       → OpenVR external_drivers → 常见安装位置 → 问用户
 $RelApp = 'BusinessStreamingDP\driver\bin\win64\driver_pico.dll'  # 相对安装根
 $RelDrv = 'driver\bin\win64\driver_pico.dll'  # 相对 BusinessStreamingDP
 $RelBin = 'bin\win64\driver_pico.dll'  # 相对 driver 目录
@@ -85,7 +81,7 @@ $md5Expect = '9017439d560747678b4550fcf6726808'
 function Die($m) { Write-Host "[X] $m" -ForegroundColor Red; exit 1 }
 
 # --- 管理员检查：没提权就自我提权 ---
-# bat 只是入口，提权这种重活放这里。提权窗口用 cmd /k 保住，跑完不关好读结果。
+# 提权窗口用 cmd /k 保住，跑完不关好读结果。
 $id = [Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not (New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host '[*] 需要管理员权限，正在请求提权（请在 UAC 弹窗点「是」）...'

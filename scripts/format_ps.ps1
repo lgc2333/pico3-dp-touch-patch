@@ -1,22 +1,13 @@
 ﻿<#
-    format_ps.ps1 —— 按本仓库约定格式化 PowerShell 脚本（只动空白，不做语义改动）
+format_ps.ps1 —— 按本仓库约定格式化 PowerShell 脚本（只动空白，不做语义改动）
 
-    三条规则（理由见 AGENTS.md 的 Rules › 编码与文件）：
-        1) 排版 = Invoke-Formatter 默认风格（不加自定义 formatter settings）
-        2) 行尾注释与代码之间固定 2 空格（用 tokenizer 定位注释 token，字符串里的 '#' 不动）
-        3) 文件头块注释：内部应为 4 空格一级 —— 本脚本**不改它**，只判定并在不对时警告
+三条规则与「文件头为什么不改」见 AGENTS.md 的 Rules › 编码与文件。
+安全闸：结果与输入的「非空白内容」不一致、头部没能逐字节搬回、或 ParseFile 报错 —— 任一发生就抛错且不写盘。
 
-    为什么文件头只警告不改：Invoke-Formatter 会重排（甚至拍平）块注释内部的缩进，且 PS 5.1 下
-    它还会把文件头 '<#' 的 '<' 吃掉。所以脚本把原文的文件头**逐字节搬回**结果里，不参与格式化；
-    层级合不合规由人判断。
-
-    安全闸：格式化只允许改空白。结果与输入的「非空白内容」不一致、或头部没能原样搬回、
-    或最终文本 ParseFile 报错 —— 任一发生就抛错并且**不写盘**。
-
-    用法：
-        powershell -File scripts\format_ps.ps1               # 就地格式化 src\windows\src\*.ps1
-        powershell -File scripts\format_ps.ps1 -Check        # 只检查：有需要改动的文件就 exit 1（层级警告不影响退出码）
-        powershell -File scripts\format_ps.ps1 -Path <文件或目录> [...]
+用法：
+    powershell -File scripts\format_ps.ps1           # 就地格式化 src\windows\src\*.ps1
+    powershell -File scripts\format_ps.ps1 -Check    # 只检查：有需要改动的文件就 exit 1（层级警告不影响退出码）
+    powershell -File scripts\format_ps.ps1 -Path <文件或目录> [...]
 #>
 [CmdletBinding()]
 param(
@@ -39,7 +30,7 @@ foreach ($p in $Path) {
 if (-not $files) { Write-Host '[X] 没找到要格式化的 .ps1' -ForegroundColor Red; exit 1 }
 
 function Test-HeaderLevel {
-    # 只判定文件头是否「4 空格一级」：正文行的缩进去重排序后，期望正好是 4/8/12…
+    # 只判定文件头是否「顶格起、每级 4 空格」：正文行的缩进去重排序后，期望正好是 0/4/8…
     # 返回告警文本数组（空数组 = 合规）
     param([string]$Header)
     $l = @($Header -split "`r?`n")
@@ -47,7 +38,7 @@ function Test-HeaderLevel {
     $body = @($l[1..($l.Count - 2)] | Where-Object { $_.Trim() })
     if (-not $body) { return @() }
     $inds = @($body | ForEach-Object { $_.Length - $_.TrimStart().Length } | Sort-Object -Unique)
-    $want = @(1..$inds.Count | ForEach-Object { 4 * $_ })
+    $want = @(0..($inds.Count - 1) | ForEach-Object { 4 * $_ })
     if (($inds -join ',') -ne ($want -join ',')) {
         return @("文件头块注释层级 {$($inds -join ',')} 不是 4 空格网格（应为 {$($want -join ',')}）—— 本脚本不改文件头，请人工对齐")
     }

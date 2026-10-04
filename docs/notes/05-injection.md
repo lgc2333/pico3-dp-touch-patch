@@ -159,7 +159,7 @@ report[50] 取值分布: {0x0:23318, 0x2:986, 0x8:874, 0x20:762, 0x80:951, 0xa:1
 **关键设计**（`src/termux/termux_touch.sh`，2026-10-05 重写）：
 
 1. **整条链交给设备自己的 adbd 跑**：Termux 是 app 进程，seccomp 过滤器跨 `exec` 继承且不可撤销 ⇒ 在那里跑 `frida-inject` 会被内核 SIGSYS 打死（`rc=159`、日志恒 0 字节）。adbd 由 init 起、`Seccomp: 0`。
-2. **提权 = 把 adbd 补成 root**：`adb tcpip 5555` → `picohaxx -adbd`；此后设备端 adb 就是 root，注入只剩一句 `adb shell start_touch.sh`；没成才回退 `picohaxx -noadbd -- start_touch.sh`。
+2. **提权 = 把 adbd 补成 root**：`adb tcpip 5555` → `picohaxx -noftpd -- /system/bin/id`（补 adbd 是默认行为）；此后设备端 adb 就是 root，注入只剩一句 `adb shell start_touch.sh`。单一路径，没有回落。
 3. **客户端 server 换端口**：补成 root 的 adbd 自己占着 `127.0.0.1:5037` ⇒ 客户端用 `ANDROID_ADB_SERVER_PORT=5038`，本机设备照样认成 `emulator-5554`。
 4. **固件串不再需要 shim**：`settings get system confirm_smartisan_version` 在 shell 域读得到，只有 app 域被 SELinux 拦。
 

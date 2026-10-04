@@ -1,16 +1,7 @@
 /*
- * hook.js —— 在头显本地把电容触摸注入 DP 串流的 HID 报文
- *
- * 用法（设备端，root）：
- *   frida-inject -p $(pidof pxrstreamingservice) -s /data/local/tmp/hook.js -e
- *
- * 原理（全部实测验证）：
- *   pxrstreamingservice 里 GetControllerKeyData 拿到 controller_data_t，
- *   其中 +32 = A/X 触摸、+36 = B/Y 触摸、+40 = 摇杆顶触摸、+44 = 扳机触摸；
- *   同一个进程里 HidIOListener::hidWrite 组装 63 字节报告体。
- *   把触摸位写进报告体的键值字低字节（= USB report[50]）：
- *     bit1 → /input/a/touch      bit3 → /input/b/touch
- *     bit5 → /input/trigger/touch（需驱动补丁）  bit7 → /input/joystick/touch（需驱动补丁）
+ * hook.js —— 头显端 Frida 脚本：把电容触摸写进 DP 串流的 HID 报文。
+ * 用法（设备端，root）：frida-inject -p $(pidof pxrstreamingservice) -s /data/local/tmp/hook.js -e
+ * 原理（偏移、位映射、为什么不换行）：见 docs/notes/02-hid-protocol.md、05-injection.md
  */
 (function () {
     'use strict';

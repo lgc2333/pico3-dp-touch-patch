@@ -7,7 +7,7 @@ get_deps.ps1 —— 从上游自动拉取并准备依赖二进制
 
 Neo 3 补丁（对上游二进制逐字节校验后原地改写）：
     0x34b6  18B  '5.9.9-202408300028' → '202409100313' + 6×NUL
-        固件串改短，兼容 '-' / '_' 两种分隔符（见 docs/06-root.md）
+        固件串改短，兼容 '-' / '_' 两种分隔符（见 docs/notes/06-root.md）
     0x164ef9  1B  0xB0 → 0x50
         selinux_state 0xffffff800aabb000 → 0xffffff800aab5000
 
@@ -117,7 +117,7 @@ if ($Force -or -not (Test-Path $Haxx)) {
     $md5 = (Get-FileHash $raw -Algorithm MD5).Hash.ToLower()
     if ($md5 -ne $HaxxMd5) {
         Write-Host "[X] 上游 picohaxx md5 = $md5，预期 $HaxxMd5" -ForegroundColor Red
-        Write-Host '    上游已更新，补丁偏移需重新确认（见 docs/06-root.md）；已中止，未写入。' -ForegroundColor Red
+        Write-Host '    上游已更新，补丁偏移需重新确认（见 docs/notes/06-root.md）；已中止，未写入。' -ForegroundColor Red
         exit 1
     }
 
@@ -139,5 +139,5 @@ if ($Force -or -not (Test-Path $Haxx)) {
 }
 
 Write-Host ''
-Write-Host '[✓] 依赖就绪：' -ForegroundColor Green
+Write-Host '[+] 依赖就绪：' -ForegroundColor Green
 Get-Item $Inj, $Haxx | ForEach-Object { Write-Host ("    {0}  ({1:N0} B)" -f $_.FullName, $_.Length) }

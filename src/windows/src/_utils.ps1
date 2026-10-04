@@ -1,19 +1,11 @@
 ﻿<#
 _utils.ps1 —— Windows 侧脚本共用的部分（脚本里用 . "$PSScriptRoot\_utils.ps1" 点源进来）
-
-    Get-RepoPaths -ScriptDir   仓库内路径表：windows/temp 缓存、shared、termux
-    Get-AdbPath   -Adb         找 adb.exe（参数 > PATH > 常见安装位置），找不到直接退出
-    Ensure-Deps   -Cache       缺 frida-inject / picohaxx.neo3.bin 就调 get_deps.ps1 拉
-    Select-Headset             认出「哪台是头显」并弄成可用：现有设备让用户认，没有就问 IP 或探测后确认
-    Connect-AdbTarget          把某个目标弄成 device 状态（connect / 必要时 tcpip 5555），失败自己收尾
-    Test-TcpOpen               端口探测（探测候选时预筛用）
 #>
 
 Set-StrictMode -Version Latest  # 点源时会把调用方也一起罩上
-$PicoUtilsDir = $PSScriptRoot  # 点源时按本文件位置算好，供下面的函数用
+$PicoUtilsDir = $PSScriptRoot
 
 function Get-RepoPaths {
-    # $ScriptDir 是调用脚本自己的目录，即 src/windows/src
     param([string]$ScriptDir)
     $win = Split-Path -Parent $ScriptDir
     $src = Split-Path -Parent $win
@@ -79,8 +71,7 @@ function Get-AdbDeviceState {
 }
 
 function Connect-AdbTarget {
-    # 把 $Target 弄成可用：需要就 connect，验证状态必须是 device
-    # 失败：是无线目标的话 disconnect 收回（别留 offline 残条）；成功且是无线目标：把 IP 记进 $IpFile
+    # 无线目标失败要 disconnect 收回，别留 offline 残条
     param([string]$Adb, [string]$Target, [string]$Serial, [string]$IpFile)
     $wireless = $Target -match '^\d+\.\d+\.\d+\.\d+:\d+$'
     $tried = $false
@@ -130,21 +121,25 @@ function Get-WirelessCandidates {
             $subnets += (($a.IPAddress -split '\.')[0..2] -join '.')
         }
     }
-    Write-Host '[*] 扫本机私有网段里开着 5555 的邻居...'
     $seen = @{}
+    $all = @()
     foreach ($l in (arp -a)) {
         if ($l -notmatch '^\s*(\d+\.\d+\.\d+\.\d+)\s') { continue }
         $ip = $Matches[1]
         $prefix = ($ip -split '\.')[0..2] -join '.'
         if ($seen[$ip] -or ($subnets -notcontains $prefix)) { continue }
         $seen[$ip] = $true
+        $all += $ip
+    }
+    Write-Host "[*] 扫本机私有网段里开着 5555 的邻居（$($all.Count) 个候选）..."
+    foreach ($ip in $all) {
         if (Test-TcpOpen -Server $ip -Port 5555 -TimeoutMs 300) { $cand += "$ip`:5555" }
     }
     @($cand | Select-Object -Unique)
 }
 
 function Select-ByIp {
-    # 纯 IPv4（调用方已校验过格式）：adb 端口固定 5555，连上验证过才算数
+    # 调用方已校验是纯 IPv4；adb 端口固定 5555
     param([string]$Adb, [string]$Text, [string]$IpFile)
     $t = "$($Text.Trim()):5555"
     if (Connect-AdbTarget -Adb $Adb -Target $t -IpFile $IpFile) { return $t }
@@ -153,11 +148,8 @@ function Select-ByIp {
 }
 
 function Select-Headset {
-    # 返回 @{ Target = <喂给 adb 的目标>; Serial = <确认下来的 USB 序列号或 ''> }；用户取消返回 $null
-    #   -Serial 给了就照用（不问）
-    #   本地 adb 已有设备：列出来让用户认（哪怕只有一台；脚本不自己猜）
-    #   没有：让用户填头显 IPv4（投屏 APP →「投至浏览器」页面上那串 IP），或回车走自动探测再确认
-    #   -Wireless：认下来的如果是 USB 直连，优先换成它的无线地址（picohaxx 会重启 adbd）
+    # 返回 @{ Target = <喂给 adb 的目标>; Serial = <USB 序列号或 ''> }；用户取消返回 $null
+    # -Wireless：认下来是 USB 直连就优先换它的无线地址（picohaxx 会重启 adbd）
     param([string]$Adb, [string]$Serial, [string]$IpFile, [switch]$Wireless)
 
     if ($Serial) {
@@ -170,7 +162,7 @@ function Select-Headset {
     if ($devs.Count -gt 0) {
         Write-Host ''
         Write-Host '--------------------------------------------------------------' -ForegroundColor Cyan
-        Write-Host ' 电脑上已经连着 adb 设备，先确认哪台是头显（脚本不替你猜）' -ForegroundColor Cyan
+        Write-Host ' 电脑上已经连着 adb 设备，先确认哪台是头显' -ForegroundColor Cyan
         Write-Host '--------------------------------------------------------------' -ForegroundColor Cyan
         for ($i = 0; $i -lt $devs.Count; $i++) { Write-Host ('   [{0}] {1}' -f ($i + 1), $devs[$i].Serial) -ForegroundColor Yellow }
         Write-Host ''
@@ -209,7 +201,7 @@ function Select-Headset {
                 Write-Host '[!] 没有可用无线地址，但 adbd 已是 root —— 直接用 USB' -ForegroundColor Yellow
             }
             else {
-                Write-Host '[!] 没有可用无线地址（Wi-Fi 没连？）—— 用 USB；picohaxx 重启 adbd 时可能断线' -ForegroundColor Yellow
+                Write-Host '[!] 没有可用无线地址（Wi-Fi 没连？）—— 用 USB；提权时可能断线' -ForegroundColor Yellow
             }
         }
         return @{ Target = $pick; Serial = $pick }
@@ -286,9 +278,8 @@ function Select-Headset {
 }
 
 function Push-TermuxKit {
-    # 把 Termux 侧要用的 kit 装进头显的 Termux 家目录（只有 adbd 已是 root 才做得到），
-    # 并且直接把「用户接下来要做什么」打出来：装好就没命令；没 root 才给兜底命令；没装 Termux 就不提 Termux。
-    # -Prefix 只为测试/非标准安装，默认就是 Termux 的标准路径。
+    # 只有 adbd 已是 root 才装得进 Termux 家目录；装不了就把用户接下来要做什么打出来
+    # -Prefix 只为测试/非标准安装，默认即 Termux 标准路径
     param(
         [string]$Adb, [string]$Target, [hashtable]$Paths,
         [string]$Launch = 'dptouch', [string]$Prefix = '/data/data/com.termux/files'
@@ -313,9 +304,7 @@ function Push-TermuxKit {
     $Dh = "$Prefix/home/pico_touch"
     $files = @(
         @{ Src = Join-Path $Paths.Termux 'termux_touch.sh'; Name = 'termux_touch.sh' }
-        @{ Src = Join-Path $Paths.Termux 'get_deps.sh'; Name = 'get_deps.sh' }
         @{ Src = Join-Path $Paths.Termux 'install.sh'; Name = 'install.sh' }
-        @{ Src = Join-Path $Paths.Termux 'launch.sh'; Name = 'launch.sh' }
         @{ Src = Join-Path $Paths.Share 'hook.js'; Name = 'hook.js' }
         @{ Src = Join-Path $Paths.Share 'start_touch.sh'; Name = 'start_touch.sh' }
         @{ Src = Join-Path $Paths.Cache 'picohaxx.neo3.bin'; Name = 'picohaxx.neo3.bin' }
@@ -326,7 +315,7 @@ function Push-TermuxKit {
         & $Adb -s $Target push $f.Src "$Dh/$($f.Name)" | Out-Null
         if ($LASTEXITCODE -ne 0) { Write-Host "[!] 推 $($f.Name) 到头显 Termux 失败" -ForegroundColor Yellow; return }
     }
-    # 短命令：$PREFIX/bin/$Launch -> ~/pico_touch/termux_touch.sh
-    & $Adb -s $Target shell "chown -R $uid`:$uid $Dh; chmod 755 $Dh $Dh/*; cp -f $Dh/launch.sh $Prefix/usr/bin/$Launch; chown $uid`:$uid $Prefix/usr/bin/$Launch; chmod 755 $Prefix/usr/bin/$Launch" | Out-Null
+    # 短命令：$PREFIX/bin/$Launch -> ~/pico_touch/termux_touch.sh（symlink，别拷副本）
+    & $Adb -s $Target shell "chown -R $uid`:$uid $Dh; chmod 755 $Dh $Dh/*; rm -f $Prefix/usr/bin/$Launch; ln -sf $Dh/termux_touch.sh $Prefix/usr/bin/$Launch; chown -h $uid`:$uid $Prefix/usr/bin/$Launch" | Out-Null
     Write-Host "[+] Termux 侧已装好：开 Termux 敲 $Launch 就能跑" -ForegroundColor Green
 }

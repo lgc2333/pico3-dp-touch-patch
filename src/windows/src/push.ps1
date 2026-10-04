@@ -1,15 +1,11 @@
 ﻿<#
 push.ps1 —— 把头显要用的文件一次性推上去（不提权、不注入、不碰分区）
 
-推这些：
-    /data/local/tmp/{frida-inject,hook.js,start_touch.sh}   设备端注入三件套
-    /sdcard/Download/pico_touch/{termux_touch.sh,get_deps.sh,install.sh,launch.sh,hook.js,start_touch.sh,picohaxx.neo3.bin}
-                                                        Termux kit（细节见 docs/notes/09-termux.md）
 依赖二进制缺了会自动调 get_deps.ps1 下载；没连设备时会问头显 IP（或自动探测后请你确认）。
-adbd 是 root 时（跑过 pico_touch.bat 就一定是）顺手把 kit 直接装进头显 Termux 家目录 + 装好短命令 dptouch。
+adbd 是 root 时顺手把 Termux kit 装进头显家目录并装好短命令 dptouch（见 docs/notes/09-termux.md）。
 
 用法：双击上层目录的 push.bat（或直接跑本脚本）
-        powershell -ExecutionPolicy Bypass -File push.ps1 [-Adb <adb.exe>] [-Serial <序列号>]
+    powershell -ExecutionPolicy Bypass -File push.ps1 [-Adb <adb.exe>] [-Serial <序列号>]
 #>
 [CmdletBinding()]
 param(
@@ -25,13 +21,13 @@ Set-StrictMode -Version Latest
 . "$PSScriptRoot\_utils.ps1"
 
 $P = Get-RepoPaths -ScriptDir $PSScriptRoot
-$Adb = Get-AdbPath -Adb $Adb  # 找不到 adb 直接退出
-Ensure-Deps -Cache $P.Cache  # 缺依赖自动拉
+$Adb = Get-AdbPath -Adb $Adb
+Ensure-Deps -Cache $P.Cache
 
 $DirName = 'pico_touch'
 $Sd = "/sdcard/Download/$DirName"
 
-# --- 认头显：现有设备让用户认，没有就问 IP / 自动探测后确认 ---
+# --- 认头显 ---
 $IpFile = Join-Path $P.Cache '.headset_ip'
 $sel = Select-Headset -Adb $Adb -Serial $Serial -IpFile $IpFile
 if (-not $sel) { Write-Host '[X] 没找到头显（已取消）' -ForegroundColor Red; exit 1 }
@@ -45,9 +41,7 @@ $jobs = @(
     @{ Src = Join-Path $P.Share 'hook.js'; Dst = '/data/local/tmp/hook.js' }
     @{ Src = Join-Path $P.Share 'start_touch.sh'; Dst = '/data/local/tmp/start_touch.sh' }
     @{ Src = Join-Path $P.Termux 'termux_touch.sh'; Dst = "$Sd/termux_touch.sh" }
-    @{ Src = Join-Path $P.Termux 'get_deps.sh'; Dst = "$Sd/get_deps.sh" }
     @{ Src = Join-Path $P.Termux 'install.sh'; Dst = "$Sd/install.sh" }
-    @{ Src = Join-Path $P.Termux 'launch.sh'; Dst = "$Sd/launch.sh" }
     @{ Src = Join-Path $P.Share 'hook.js'; Dst = "$Sd/hook.js" }
     @{ Src = Join-Path $P.Share 'start_touch.sh'; Dst = "$Sd/start_touch.sh" }
     @{ Src = Join-Path $P.Cache 'picohaxx.neo3.bin'; Dst = "$Sd/picohaxx.neo3.bin" }
@@ -63,6 +57,4 @@ foreach ($j in $jobs) {
 Write-Host '[+] 文件已就位' -ForegroundColor Green
 
 Write-Host ''
-# Termux 侧的话术以 docs/notes/09-termux.md 为准（流程的唯一权威在那边）
-# 函数自己会把结论打出来：root 时装好并给短命令；没 root 给兜底命令；没装 Termux 就不提 Termux
 Push-TermuxKit -Adb $Adb -Target $target -Paths $P
