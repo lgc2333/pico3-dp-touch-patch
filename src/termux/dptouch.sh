@@ -1,9 +1,9 @@
 #!/data/data/com.termux/files/usr/bin/sh
-# termux_touch.sh —— 头显里敲 `dptouch` 跑的一键恢复（Termux，不需要 PC）。
+# dptouch.sh —— 头显里敲 `dptouch` 跑的一键恢复（Termux，不需要 PC）。
 # 流程、为什么整条链都借本机 adbd、前提、失败怎么办：见 docs/notes/09-termux.md
 
 # $PREFIX/bin/dptouch 是指向本脚本的 symlink ⇒ 先找真身再算 HERE（readlink 不可用就按标准装法）
-REAL=$(readlink -f "$0" 2>/dev/null) || REAL=$HOME/pico_touch/termux_touch.sh
+REAL=$(readlink -f "$0" 2>/dev/null) || REAL=$HOME/pico_touch/dptouch.sh
 HERE=$(cd "$(dirname "$REAL")" && pwd)
 PORT=5555
 DEV=127.0.0.1:$PORT        # 设备上跑 adb：本机 adbd 就在这个 TCP 口上
@@ -41,7 +41,7 @@ kit() {   # kit <名字>：在 kit 里找（$HERE 或 $HERE/temp/）
 }
 
 run() {
-    echo "### termux_touch.sh 开始 $TS"
+    echo "### dptouch.sh 开始 $TS"
     echo "=== 1/4 准备 adb ==="
     # 本机 adbd 占着 127.0.0.1:5037 ⇒ 客户端的 server 换 5038；写进 ~/.bashrc（幂等），新开的 Termux 会话也生效
     RC=$HOME/.bashrc

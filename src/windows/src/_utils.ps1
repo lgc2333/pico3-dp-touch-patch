@@ -303,11 +303,12 @@ function Push-TermuxKit {
     $uid = (((& $Adb -s $Target shell "stat -c %u $Prefix/home") -join '')).Trim()
     $Dh = "$Prefix/home/pico_touch"
     $files = @(
-        @{ Src = Join-Path $Paths.Termux 'termux_touch.sh'; Name = 'termux_touch.sh' }
+        @{ Src = Join-Path $Paths.Termux 'dptouch.sh'; Name = 'dptouch.sh' }
         @{ Src = Join-Path $Paths.Termux 'install.sh'; Name = 'install.sh' }
         @{ Src = Join-Path $Paths.Share 'hook.js'; Name = 'hook.js' }
         @{ Src = Join-Path $Paths.Share 'start_touch.sh'; Name = 'start_touch.sh' }
         @{ Src = Join-Path $Paths.Cache 'picohaxx.neo3.bin'; Name = 'picohaxx.neo3.bin' }
+        @{ Src = Join-Path $Paths.Cache 'frida-inject'; Name = 'frida-inject' }
     )
     & $Adb -s $Target shell "mkdir -p $Dh" | Out-Null
     foreach ($f in $files) {
@@ -315,7 +316,9 @@ function Push-TermuxKit {
         & $Adb -s $Target push $f.Src "$Dh/$($f.Name)" | Out-Null
         if ($LASTEXITCODE -ne 0) { Write-Host "[!] 推 $($f.Name) 到头显 Termux 失败" -ForegroundColor Yellow; return }
     }
-    # 短命令：$PREFIX/bin/$Launch -> ~/pico_touch/termux_touch.sh（symlink，别拷副本）
-    & $Adb -s $Target shell "chown -R $uid`:$uid $Dh; chmod 755 $Dh $Dh/*; rm -f $Prefix/usr/bin/$Launch; ln -sf $Dh/termux_touch.sh $Prefix/usr/bin/$Launch; chown -h $uid`:$uid $Prefix/usr/bin/$Launch" | Out-Null
+    # 短命令：$PREFIX/bin/$Launch -> ~/pico_touch/dptouch.sh（symlink）。
+    # ★ root 建出来的条目必须带上 app 的 SELinux 类别，否则 app 连 stat 都 Permission denied（实测踩过：
+    #   少了 s0:c126,c256,c512,c768 ⇒ install.sh 报 cp cannot stat）。用 --reference 抄一份 app 自己的类别。
+    & $Adb -s $Target shell "chown -R $uid`:$uid $Dh; chmod 755 $Dh $Dh/*; rm -f $Prefix/usr/bin/$Launch; ln -sf $Dh/dptouch.sh $Prefix/usr/bin/$Launch; chown -h $uid`:$uid $Prefix/usr/bin/$Launch; chcon -h --reference=$Prefix/home $Prefix/usr/bin/$Launch; restorecon -R $Dh" | Out-Null
     Write-Host "[+] Termux 侧已装好：开 Termux 敲 $Launch 就能跑" -ForegroundColor Green
 }

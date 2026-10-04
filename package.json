@@ -2,7 +2,7 @@
   "private": true,
   "scripts": {
     "check": "pnpm run check:shell && pnpm run check:ps && pnpm run check:js && pnpm run check:md",
-    "check:shell": "uvx --from shellcheck-py shellcheck -s sh src/termux/termux_touch.sh src/termux/install.sh src/shared/start_touch.sh",
+    "check:shell": "uvx --from shellcheck-py shellcheck -s sh src/termux/dptouch.sh src/termux/install.sh src/shared/start_touch.sh",
     "check:ps": "powershell -NoProfile -File scripts/format_ps.ps1 -Check && powershell -NoProfile -Command \"Invoke-ScriptAnalyzer -Path src/windows/src -Recurse -Settings ./PSScriptAnalyzerSettings.psd1; Invoke-ScriptAnalyzer -Path scripts -Recurse -Settings ./PSScriptAnalyzerSettings.psd1\"",
     "check:js": "node --check src/shared/hook.js",
     "check:md": "pnpx prettier -c AGENTS.md README.md \"docs/notes/**/*.md\"",

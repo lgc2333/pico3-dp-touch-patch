@@ -1,4 +1,4 @@
-# AGENTS.md
+﻿# AGENTS.md
 
 PICO Neo 3 Pro（企业版）在「Business Streaming DP 直连」下补回手柄电容触摸：头显端 Frida hook + PC 驱动 14 字节补丁。面向用户的说明在 `README.md`；完整逆向记录在 `docs/`。
 
@@ -16,8 +16,8 @@ src/
       get_deps.ps1    从上游拉 frida-inject / picohaxx 并打 Neo 3 补丁
     temp/             运行期缓存：依赖二进制、`.headset_ip`（整目录被 .gitignore 忽略）
   termux/             头显端（Termux）的 kit：装进 ~/pico_touch 即用，运行期不碰 /sdcard
-    termux_touch.sh   每次开机跑：只验 adb（**不自更新**，换版本走 install.sh / push.bat）+ 经本机 adbd 提权 picohaxx 并注入（**单一路径，无回落**）；缺 adb 时自己 `pkg update/upgrade` + 装 android-tools；日志写 ./logs/
-    install.sh        兜底装 kit（PC 侧 adbd 非 root 时）：/sdcard 的 kit → ~/pico_touch + 把 `$PREFIX/bin/dptouch` 指过去（symlink；头显不再自己下依赖）
+    dptouch.sh        每次开机跑：只验 adb（**不自更新**，换版本走 install.sh / push.bat）+ 经本机 adbd 提权 picohaxx 并注入（**单一路径，无回落**）；缺 adb 时自己 `pkg update/upgrade` + 装 android-tools；日志写 ./logs/
+    install.sh        兜底装 kit（PC 侧 adbd 非 root 时）：/sdcard 的 kit → ~/pico_touch + 把 `$PREFIX/bin/dptouch` 建成 symlink（头显不再自己下依赖）
   shared/             两端共用的设备端脚本
     hook.js           Frida 脚本：键值字 bit1/3/5/7 ← controller_data_t +32/+36/+40/+44
     start_touch.sh    幂等启动（检查 /proc/<pid>/maps 是否已有 frida-agent）
@@ -44,22 +44,22 @@ pnpm run device:all   # 设备只读验证：id / seccomp / hook / kit / logs（
 任务没覆盖、偶尔还要手敲的：
 
 ```sh
-sh -n src/termux/termux_touch.sh src/termux/install.sh src/shared/start_touch.sh   # POSIX 语法（shellcheck 也会报语法错）
+sh -n src/termux/dptouch.sh src/termux/install.sh src/shared/start_touch.sh   # POSIX 语法（shellcheck 也会报语法错）
 ```
 
 ## 设备端（动真机时看这里）
 
-| 路径                                                                                       | 谁放的                                 | 作用                                                                                                                      |
-| ------------------------------------------------------------------------------------------ | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `/data/local/tmp/{frida-inject,hook.js,start_touch.sh}`                                    | `push.bat` / `pico_touch.ps1`          | 注入三件套（必须 root 才能执行）                                                                                          |
-| `/data/local/tmp/picohaxx`                                                                 | `pico_touch.ps1` 提权时                | 临时 root（重启失效）                                                                                                     |
-| `/data/local/tmp/picohaxx.log`                                                             | `termux_touch.sh`                      | 提权那步 picohaxx 的输出（一眼判它是打完补丁还是自己中止）                                                                |
-| `/data/local/tmp/dptouch_run.log`                                                          | `termux_touch.sh`                      | 注入那步的全过程，末尾 `[[RC]]=<rc>`（脚本轮询它拿结果，不等 adb 客户端）                                                 |
-| `/sdcard/Download/pico_touch/{*.sh,hook.js,start_touch.sh,picohaxx.neo3.bin}`              | `push.bat`                             | 传输中转：root 时 PC 直接装进 Termux；非 root 时用户在里面跑 `install.sh`                                                 |
-| `~/pico_touch/{termux_touch.sh,install.sh,hook.js,start_touch.sh,picohaxx.neo3.bin,logs/}` | `Push-TermuxKit`（root）/ `install.sh` | Termux 方案的 kit（**全由 PC 推**：头显侧不下依赖；目录 `chmod 755` ⇒ shell 用户的 adb 也读得到 kit；运行期不碰 /sdcard） |
-| `$PREFIX/bin/dptouch`                                                                      | `Push-TermuxKit` / `install.sh`        | 短命令（VR 里少打字）：**symlink 到 `~/pico_touch/termux_touch.sh`**（脚本用 `readlink -f` 找真身）                       |
-| `/data/local/tmp/start_touch.log`                                                          | `start_touch.sh`                       | 注入过程自述（0666 ⇒ PC 侧不 root 也能读，失败原因都在这儿）                                                              |
-| `/sdcard/Download/pico_touch/logs/`                                                        | `pico_touch.ps1` / `termux_touch.sh`   | 设备端 logcat ＋ `dptouch` 日志的镜像（不 root 的 adb / PC 读得到）                                                       |
+| 路径                                                                                               | 谁放的                                 | 作用                                                                                                                                 |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `/data/local/tmp/{frida-inject,hook.js,start_touch.sh}`                                            | `push.bat` / `pico_touch.ps1`          | 注入三件套（必须 root 才能执行）                                                                                                     |
+| `/data/local/tmp/picohaxx`                                                                         | `pico_touch.ps1` 提权时                | 临时 root（重启失效）                                                                                                                |
+| `/data/local/tmp/picohaxx.log`                                                                     | `dptouch.sh`                           | 提权那步 picohaxx 的输出（一眼判它是打完补丁还是自己中止）                                                                           |
+| `/data/local/tmp/dptouch_run.log`                                                                  | `dptouch.sh`                           | 注入那步的全过程，末尾 `[[RC]]=<rc>`（脚本轮询它拿结果，不等 adb 客户端）                                                            |
+| `/sdcard/Download/pico_touch/{*.sh,hook.js,start_touch.sh,picohaxx.neo3.bin,frida-inject}`         | `push.bat`                             | 传输中转（**要完整**：头显侧不下依赖）：root 时 PC 直接装进 Termux；非 root 时用户在里面跑 `install.sh`                              |
+| `~/pico_touch/{dptouch.sh,install.sh,hook.js,start_touch.sh,picohaxx.neo3.bin,frida-inject,logs/}` | `Push-TermuxKit`（root）/ `install.sh` | Termux 方案的 kit（**全由 PC 推**：头显侧不下依赖；目录 `chmod 755` ⇒ shell 用户的 adb 也读得到 kit；运行期不碰 /sdcard）            |
+| `$PREFIX/bin/dptouch`                                                                              | `Push-TermuxKit` / `install.sh`        | 短命令（VR 里少打字）：**symlink 到 `~/pico_touch/dptouch.sh`**（脚本 `readlink -f` 找真身）；root 建条目时要 `chcon -h --reference` |
+| `/data/local/tmp/start_touch.log`                                                                  | `start_touch.sh`                       | 注入过程自述（0666 ⇒ PC 侧不 root 也能读，失败原因都在这儿）                                                                         |
+| `/sdcard/Download/pico_touch/logs/`                                                                | `pico_touch.ps1` / `dptouch.sh`        | 设备端 logcat ＋ `dptouch` 日志的镜像（不 root 的 adb / PC 读得到）                                                                  |
 
 只读验证：优先 `pnpm run device:all`（id / seccomp / hook / kit / logs；实现见 `scripts/device_probe.ps1`）。探针没覆盖、偶尔还要手敲的几条：
 
@@ -70,7 +70,7 @@ adb shell 'ls -la /data/data/com.termux/files/home/pico_touch; ls -l /data/data/
 ```
 
 - 设备端命令**不要带双引号**：PowerShell 5.1 调 `adb.exe` 时，`\"` 的转义过不了 Windows 的 argv 层（设备端看到字面量 `\"`，`[ -n \"$p\" ]` 恒真）⇒ 用 `[ $p ]`、`pidof -s`，需要临时变量就在同一条命令里 `f=$(…)` 后判空。
-
+- **`$PREFIX/bin/dptouch` 是 symlink，且必须由 app 建（或 root 建完 `chcon -h --reference=<app 自己的文件>`）**：root 建的条目只带 `u:object_r:app_data_file:s0`、少了 app 的类别（`s0:c126,c256,c512,c768`）⇒ app 连 `stat` 都被拒，`install.sh` 会报 `cp: cannot stat '…/dptouch'`（实机踩到，2026-10-05）。另一件相关的事：**kit 由谁落的盘** —— 最稳是「PC 推 `/sdcard` → 头显里 `install.sh`」（文件由 app 创建，属主/类别都对）；root 直推时 `Push-TermuxKit` 会 `chown -R` + `chcon -h --reference` 兜底。`/sdcard` 那份必须是**完整** kit（含 `frida-inject`，头显侧不下依赖）。
 - `patch_driver` 前置：**SteamVR 必须没跑**（`tasklist | findstr vrserver`）；只想验补丁逻辑就用 `-Dll <临时目录里的 DLL 副本>`，别碰真文件。
 - UAC 需要人点：跑 `patch_driver.bat` 前先告诉用户一声，别让它干等。
 - `picohaxx` 默认 `-adbd`：打完 adbd 补丁会 **restart adbd** ⇒ 所有 adb 连接当场断开，且新 adbd 读的是易失的 `service.adb.tcp.port`（`persist` 那个不算）⇒ 两边都得先 `adb tcpip 5555` 再提权：PC 侧带重连循环，Termux 侧用 `adb connect 127.0.0.1:5555` 轮询等它回来。它自己中止（`FATAL: SPINLOCK TIMEOUT`）时 adbd **压根没被动过**（既不掉线也不变 root）⇒ 两边都不干等、不重试（判据与两种表现见 `docs/notes/06-root.md`）。Termux 侧只有这一条路：提权也经 adbd（app 域直跑还要一个 `settings` 垫片，不值当）。
@@ -92,12 +92,12 @@ adb shell 'ls -la /data/data/com.termux/files/home/pico_touch; ls -l /data/data/
 - 幂等：能重复跑的脚本必须安全（补丁从 `.orig` 重算、注入前先查 `/proc/<pid>/maps`、推送可覆盖），重复跑不产生第二份副作用。
 - 失败要吵：任何失败都要有 `[X]` 消息 + 非零退出码，并由 wrapper 传出去（`exit /b %RC%`）；禁止 `| Out-Null` 吞掉错误还不检查 `$LASTEXITCODE`。
 - 只认状态不认字符串：判断设备/服务可用时匹配状态字段（`adb devices` 的 `device`），不要匹配「出现过」。
-- 别把常驻进程的 stdout 接进管道：`frida-inject -e` 这类会一直攥着调用方的 stdout/write 端 ⇒ `| tee` 永远等不到 EOF，脚本/`adb shell` 就挂在那儿不退。设备端要长跑的命令自己 detach（`>/dev/null 2>&1 </dev/null &`），外层显示改用「输出进日志文件 + `wait` 主进程」（见 `src/shared/start_touch.sh`、`src/termux/termux_touch.sh`）。
+- 别把常驻进程的 stdout 接进管道：`frida-inject -e` 这类会一直攥着调用方的 stdout/write 端 ⇒ `| tee` 永远等不到 EOF，脚本/`adb shell` 就挂在那儿不退。设备端要长跑的命令自己 detach（`>/dev/null 2>&1 </dev/null &`），外层显示改用「输出进日志文件 + `wait` 主进程」（见 `src/shared/start_touch.sh`、`src/termux/dptouch.sh`）。
 - exploit 自己中止（`FATAL: SPINLOCK TIMEOUT`）时 adbd **压根没被动过**（既不掉线也不变 root）⇒ 别再去等它「以 root 回来」：Termux 侧读设备端 `picohaxx.log` 判 FATAL 就收工，PC 侧用「adbd 还在且 `id -u` ≠ 0」判同一种中止；两边都不重试、不回落（表现一 = 同一开机跑多了；表现二 = 100% 必挂 ⇒ 先怀疑 Termux 那套环境；见 `docs/notes/06-root.md`）。
 - 轮询/等待要报进度：等设备、等 adbd 回来、等远端结果这类循环，每几秒打一行（`[i] 还在等…（第 N/M 轮）`），别让程序看起来卡死；能顺带打印远端输出的就把输出跟着看（写文件 + `tail`）。
 - 输出去噪：只打**状态值**（uid / rc / 路径 / 轮次 / 已等秒数）和**用户该做什么**（要点的按钮、要跑的 setup）；解释原理、机制、为什么这么做的话写成注释（行尾注释），别 `echo`。也别在输出里自我辩解（「别嫌长」这类）。
 - 注释只留「一句话 + 指针」：能指 `docs/notes/` 就别复述 —— 文档讲过的机制不要在脚本里再讲一遍。
-- 也别 `wait` 长跑命令的 `adb shell` 客户端：设备端留下常驻子进程（picohaxx 的喷子）时连接迟迟不关 —— 实测命令早跑完、结果都写进日志了，客户端还挂着。⇒ 远端结果用「轮询设备端日志文件拿标记，拿到就 kill 客户端」（见 `src/termux/termux_touch.sh`）。
+- 也别 `wait` 长跑命令的 `adb shell` 客户端：设备端留下常驻子进程（picohaxx 的喷子）时连接迟迟不关 —— 实测命令早跑完、结果都写进日志了，客户端还挂着。⇒ 远端结果用「轮询设备端日志文件拿标记，拿到就 kill 客户端」（见 `src/termux/dptouch.sh`）。
 - 探测失败就地问用户（`Read-Host`），别改成要求提前传参；探测优先用稳定标识（注册表键值、脚本自身目录），不按本地化名字找。
 - 提示语中文，前缀 `[+]` 成功 / `[=]` 跳过 / `[!]` 警告 / `[i]` 说明 / `[X]` 失败；权限类提示写清「要做什么 + 用户要点什么」。
 - 措辞分两层：`[i]` 与交互提示用白话（先说现状、再说用户该做什么）；状态 / 诊断行保持精确技术措辞（`offline` / `unauthorized` 原样留着，用户要能照抄去搜）。别把「友好」泛化到诊断行。

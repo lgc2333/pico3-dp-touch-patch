@@ -26,7 +26,7 @@ picohaxx 在 app 域要额外一个 `settings` 垫片才认得出固件（见 [`
    - 或头显 Termux 里 `termux-setup-storage` 后 `sh /sdcard/Download/pico_touch/install.sh`（只拷 kit + 装短命令）；
 4. 以后**每次开机**在 Termux 里敲 `dptouch`。
 
-`dptouch`（= kit 里的 `termux_touch.sh`）每次做四件事：
+`dptouch`（= kit 里的 `dptouch.sh`）每次做四件事：
 
 1. 只验 adb：用不了就自己 `pkg update` + `pkg upgrade`（非交互、冲突取新版）+ 装 `android-tools`（旧的包环境是「100% 必挂的 FATAL」第一嫌疑）；顺手把 `ANDROID_ADB_SERVER_PORT=5038` 写进 `~/.bashrc`（幂等，新开的 Termux 会话也生效）。**不自更新** —— 换版本走 PC 侧 `push.bat`；
 2. 推 `picohaxx / frida-inject / hook.js / start_touch.sh` 到 `/data/local/tmp`（kit 里缺哪个就让你重跑 `push.bat`）；

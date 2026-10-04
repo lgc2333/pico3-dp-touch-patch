@@ -158,10 +158,10 @@ function Probe-Hook {
 
 function Probe-Kit {
     param([string]$Adb, [string]$Target, [string]$HomeDir, [hashtable]$Paths)
-    $names = @('termux_touch.sh', 'install.sh', 'hook.js', 'start_touch.sh', 'picohaxx.neo3.bin')
+    $names = @('dptouch.sh', 'install.sh', 'hook.js', 'start_touch.sh', 'picohaxx.neo3.bin')
     # 仓库里那份在哪：kit 四个在 src 下，picohaxx 在运行期缓存里
     $srcOf = @{
-        'termux_touch.sh'   = Join-Path $Paths.Termux 'termux_touch.sh'
+        'dptouch.sh'        = Join-Path $Paths.Termux 'dptouch.sh'
         'install.sh'        = Join-Path $Paths.Termux 'install.sh'
         'hook.js'           = Join-Path $Paths.Share 'hook.js'
         'start_touch.sh'    = Join-Path $Paths.Share 'start_touch.sh'

@@ -40,11 +40,12 @@ $jobs = @(
     @{ Src = Join-Path $P.Cache 'frida-inject'; Dst = '/data/local/tmp/frida-inject' }
     @{ Src = Join-Path $P.Share 'hook.js'; Dst = '/data/local/tmp/hook.js' }
     @{ Src = Join-Path $P.Share 'start_touch.sh'; Dst = '/data/local/tmp/start_touch.sh' }
-    @{ Src = Join-Path $P.Termux 'termux_touch.sh'; Dst = "$Sd/termux_touch.sh" }
+    @{ Src = Join-Path $P.Termux 'dptouch.sh'; Dst = "$Sd/dptouch.sh" }
     @{ Src = Join-Path $P.Termux 'install.sh'; Dst = "$Sd/install.sh" }
     @{ Src = Join-Path $P.Share 'hook.js'; Dst = "$Sd/hook.js" }
     @{ Src = Join-Path $P.Share 'start_touch.sh'; Dst = "$Sd/start_touch.sh" }
     @{ Src = Join-Path $P.Cache 'picohaxx.neo3.bin'; Dst = "$Sd/picohaxx.neo3.bin" }
+    @{ Src = Join-Path $P.Cache 'frida-inject'; Dst = "$Sd/frida-inject" }  # kit 必需：头显侧不再自己下依赖
 )
 foreach ($j in $jobs) {
     $s = $j.Src; $d = $j.Dst
