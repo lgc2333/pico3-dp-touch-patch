@@ -33,7 +33,7 @@ A/B/X/Y、扳机、摇杆顶，六处触摸全部正常。
 
 在 GitHub 页面点 **Code → Download ZIP**，下载后解压。下面把解压出的文件夹统称「项目目录」。
 
-PC 上装好 **adb**（Android platform-tools，并加进 PATH）。
+PC 上装好 **adb**（Android platform-tools，并加进 PATH）；**没装也行**——脚本会自动下载 platform-tools 到 `src\windows\temp\platform-tools\` 并用它（需要联网）。
 
 ### 1. 给 PC 驱动打补丁（一次性）
 

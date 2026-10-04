@@ -9,7 +9,7 @@ adbd 是 root 时顺手把 Termux kit 装进头显家目录并装好短命令 dp
 #>
 [CmdletBinding()]
 param(
-    # adb.exe 路径；不传就自动找
+    # adb.exe 路径；不传就自动找（PATH / 常见安装位置 / 自动下载到 temp）
     [string]$Adb,
     # 有多台设备时指定序列号
     [string]$Serial

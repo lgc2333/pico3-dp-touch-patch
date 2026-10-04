@@ -9,11 +9,11 @@ src/
   windows/            PC（Windows）侧：wrapper 在外面，实现和缓存都在里面
     pico_touch.bat / patch_driver.bat / push.bat   双击即用的入口，只负责调 src/ 下的脚本
     src/              实现脚本（PowerShell 5.1+）
-      _utils.ps1      公用：仓库路径、找 adb.exe、拉依赖、认/连头显、装 Termux kit（被下面几个点源）
+      _utils.ps1      公用：仓库路径、找/补 adb.exe、拉依赖、认/连头显、装 Termux kit（被下面几个点源）
       pico_touch.ps1  一键：找头显 → 无线 adb → picohaxx 提权 → 推送 → 设备端注入
       push.ps1        只推文件：设备端三件套 + Termux 要用的（不提权、不注入）
       patch_driver.ps1 驱动 14 字节补丁（自己定位 DLL：注册表/OpenVR/问用户；未提权自己弹 UAC）
-      get_deps.ps1    从上游拉 frida-inject / picohaxx 并打 Neo 3 补丁
+      get_deps.ps1    从上游拉 frida-inject / picohaxx（并打 Neo 3 补丁）/ platform-tools（-PlatformTools）
     temp/             运行期缓存：依赖二进制、`.headset_ip`（整目录被 .gitignore 忽略）
   termux/             头显端（Termux）的 kit：装进 ~/pico_touch 即用，运行期不碰 /sdcard
     dptouch.sh        每次开机跑：只验 adb（**不自更新**，换版本走 install.sh / push.bat）+ 经本机 adbd 提权 picohaxx 并注入（**单一路径，无回落**）；缺 adb 时自己 `pkg update/upgrade` + 装 android-tools；日志写 ./logs/

@@ -23,7 +23,7 @@ param(
     [string]$What = 'all',
     # 目标设备（ip / ip:port / USB 序列号）；不传就按文件头说的顺序认
     [string]$Target,
-    # adb.exe 路径；不传就自动找
+    # adb.exe 路径；不传就自动找（PATH / 常见安装位置 / 自动下载到 temp）
     [string]$Adb,
     # Termux 前缀；非标准安装与测试用
     [string]$Prefix = '/data/data/com.termux/files'

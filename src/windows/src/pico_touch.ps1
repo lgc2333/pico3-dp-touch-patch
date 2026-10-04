@@ -16,7 +16,7 @@ pico_touch.ps1 —— 一键恢复「DP 直连手柄电容触摸」
         get_deps.ps1 从上游拉取；设备端脚本取自 ..\shared\。
 
 参数：
-    -Adb     adb.exe 路径（默认自动探测 PATH 与常见安装位置）
+    -Adb     adb.exe 路径（默认自动探测 PATH 与常见安装位置；都没有就自动下载到 temp）
     -Serial  USB 连接时的设备序列号
 
 用法：双击 src\windows\pico_touch.bat（或直接跑本脚本）

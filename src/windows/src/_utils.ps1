@@ -23,7 +23,9 @@ function Get-AdbPath {
         if (Test-Path $Adb) { return (Resolve-Path $Adb).Path }
         Write-Host "[X] 指定的 adb 不存在：$Adb" -ForegroundColor Red; exit 1
     }
-    $p = (Get-Command adb -ErrorAction SilentlyContinue).Source
+    # Get-Command 没找到时是 $null：StrictMode 下不能直接取 .Source
+    $cmd = Get-Command adb -ErrorAction SilentlyContinue
+    $p = if ($cmd) { $cmd.Source } else { $null }
     if (-not $p) {
         foreach ($c in @("$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe",
                 "$env:ProgramFiles\Android\platform-tools\adb.exe",
@@ -31,8 +33,15 @@ function Get-AdbPath {
             if (Test-Path $c) { $p = $c; break }
         }
     }
-    if (-not $p) { Write-Host '[X] 找不到 adb.exe，请用 -Adb <路径> 指定' -ForegroundColor Red; exit 1 }
-    $p
+    if ($p) { return $p }
+    # 哪里都没有：让 get_deps.ps1 按需拉一份到 temp/platform-tools（md5 逐字节校验，见该脚本）
+    $cached = Join-Path (Get-RepoPaths -ScriptDir $PicoUtilsDir).Cache 'platform-tools\adb.exe'
+    if (-not (Test-Path $cached)) {
+        Write-Host '[i] 本机没装 adb，自动下载 platform-tools 到缓存...'
+        & (Join-Path $PicoUtilsDir 'get_deps.ps1') -PlatformTools
+    }
+    if (-not (Test-Path $cached)) { Write-Host '[X] adb 下载失败，请手动装 platform-tools 或用 -Adb <路径> 指定' -ForegroundColor Red; exit 1 }
+    $cached
 }
 
 function Ensure-Deps {
