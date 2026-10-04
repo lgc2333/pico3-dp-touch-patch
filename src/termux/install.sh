@@ -10,8 +10,8 @@ D=$HOME/pico_touch
 
 echo '[=] 1/2 装 kit 到 ~/pico_touch'
 mkdir -p "$D"
-cp -rf "$S/." "$D/"     # 用「/.」是覆盖式拷贝：重复跑不会套娃成 ~/pico_touch/pico_touch
-chmod 755 "$D"/*.sh "$D"/*.bin 2>/dev/null || true
+cp -rf "$S/." "$D/"     # 用「./」是覆盖式拷贝：重复跑不会套娃成 ~/pico_touch/pico_touch
+chmod 755 "$D" "$D"/*.sh "$D"/*.bin 2>/dev/null || true   # 目录也要 755：shell 用户的 adb 只读看得到 kit（见 AGENTS 设备端）
 
 echo '[=] 2/2 装短命令 dptouch'
 mkdir -p "$PREFIX/bin"

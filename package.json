@@ -1,0 +1,19 @@
+{
+  "private": true,
+  "scripts": {
+    "check": "pnpm run check:shell && pnpm run check:ps && pnpm run check:js && pnpm run check:md",
+    "check:shell": "uvx --from shellcheck-py shellcheck -s sh src/termux/termux_touch.sh src/termux/install.sh src/shared/start_touch.sh",
+    "check:ps": "powershell -NoProfile -File scripts/format_ps.ps1 -Check && powershell -NoProfile -Command \"Invoke-ScriptAnalyzer -Path src/windows/src -Recurse -Settings ./PSScriptAnalyzerSettings.psd1; Invoke-ScriptAnalyzer -Path scripts -Recurse -Settings ./PSScriptAnalyzerSettings.psd1\"",
+    "check:js": "node --check src/shared/hook.js",
+    "check:md": "pnpx prettier -c AGENTS.md README.md \"docs/notes/**/*.md\"",
+    "fmt:ps": "powershell -NoProfile -File scripts/format_ps.ps1",
+    "fmt:md": "pnpx prettier -w AGENTS.md README.md \"docs/notes/**/*.md\"",
+    "deps": "powershell -ExecutionPolicy Bypass -File src/windows/src/get_deps.ps1",
+    "device:id": "powershell -NoProfile -File scripts/device_probe.ps1 -What id",
+    "device:seccomp": "powershell -NoProfile -File scripts/device_probe.ps1 -What seccomp",
+    "device:hook": "powershell -NoProfile -File scripts/device_probe.ps1 -What hook",
+    "device:kit": "powershell -NoProfile -File scripts/device_probe.ps1 -What kit",
+    "device:logs": "powershell -NoProfile -File scripts/device_probe.ps1 -What logs",
+    "device:all": "powershell -NoProfile -File scripts/device_probe.ps1 -What all"
+  }
+}

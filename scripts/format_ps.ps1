@@ -19,7 +19,7 @@ Set-StrictMode -Version Latest
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $Root = Split-Path -Parent $PSScriptRoot  # 本文件在 scripts\ 下，仓库根是它的上一级
-if (-not $Path) { $Path = @(Join-Path $Root 'src/windows/src') }
+if (-not $Path) { $Path = @((Join-Path $Root 'src/windows/src'), (Join-Path $Root 'scripts')) }
 
 $files = @()
 foreach ($p in $Path) {

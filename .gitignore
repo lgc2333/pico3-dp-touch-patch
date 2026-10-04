@@ -1,1 +1,6 @@
 temp/
+
+# 只是任务入口（package.json scripts），没有依赖：别把 pnpm/npm 的产物带进来
+node_modules/
+pnpm-lock.yaml
+package-lock.json

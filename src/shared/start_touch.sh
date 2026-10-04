@@ -17,7 +17,7 @@ fi
 : > "$LOG" 2>/dev/null || true
 chmod 666 "$LOG" 2>/dev/null || true
 say() { echo "$@"; echo "$@" >> "$LOG" 2>/dev/null || true; }
-injected() { grep -q 'frida-agent' /proc/$PID/maps 2>/dev/null; }
+injected() { grep -q 'frida-agent' /proc/"$PID"/maps 2>/dev/null; }
 
 # 0 = adbd 的后代（正常）；2 = app 的过滤器（Termux 直跑）⇒ 注入器必然被 SIGSYS 杀
 say "[i] 本线路 Seccomp=$(grep -E '^Seccomp:' /proc/self/status | tr -d '\t ' | cut -d: -f2)"

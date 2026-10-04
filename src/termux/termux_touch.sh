@@ -16,7 +16,7 @@ HLOG=$TMP/picohaxx.log     # picohaxx 自己的输出（判它是打完补丁还
 WAIT=90                    # 等 [[RC]] 标记的轮数（每轮 2 秒）
 
 # 本机 adbd 自己占着 127.0.0.1:5037，客户端的 server 起不来（could not install *smartsocket* listener）
-export ANDROID_ADB_SERVER_PORT=${ADB_PORT:-5038}
+export ANDROID_ADB_SERVER_PORT="${ADB_PORT:-5038}"
 
 mkdir -p "$LOGDIR" 2>/dev/null || true
 
@@ -173,5 +173,7 @@ wait $RUNPID
 RC=$?
 sleep 0.2
 [ -n "$TAILPID" ] && kill $TAILPID 2>/dev/null || true
+SHARE=/sdcard/Download/pico_touch/logs   # 镜像一份到 /sdcard：不 root 的 adb / PC 也读得到（见 AGENTS 设备端）
+mkdir -p "$SHARE" 2>/dev/null && cp -f "$LOG" "$SHARE/" 2>/dev/null || true
 echo "### 结束 $TS rc=$RC —— 日志：$LOG"
 exit $RC
