@@ -317,8 +317,22 @@ function Push-TermuxKit {
         if ($LASTEXITCODE -ne 0) { Write-Host "[!] 推 $($f.Name) 到头显 Termux 失败" -ForegroundColor Yellow; return }
     }
     # 短命令：$PREFIX/bin/$Launch -> ~/pico_touch/dptouch.sh（symlink）。
-    # ★ root 建出来的条目必须带上 app 的 SELinux 类别，否则 app 连 stat 都 Permission denied（实测踩过：
-    #   少了 s0:c126,c256,c512,c768 ⇒ install.sh 报 cp cannot stat）。用 --reference 抄一份 app 自己的类别。
-    & $Adb -s $Target shell "chown -R $uid`:$uid $Dh; chmod 755 $Dh $Dh/*; rm -f $Prefix/usr/bin/$Launch; ln -sf $Dh/dptouch.sh $Prefix/usr/bin/$Launch; chown -h $uid`:$uid $Prefix/usr/bin/$Launch; chcon -h --reference=$Prefix/home $Prefix/usr/bin/$Launch; restorecon -R $Dh" | Out-Null
-    Write-Host "[+] Termux 侧已装好：开 Termux 敲 $Launch 就能跑" -ForegroundColor Green
+    # ★ root 建出来的条目必须抄上 app 的 SELinux 类别：默认只有 u:object_r:app_data_file:s0，
+    #   少了 s0:c126,c256,c512,c768 ⇒ app 连 stat 都 Permission denied（实测踩过两次：
+    #   install.sh 报 cp cannot stat / 敲 dptouch 直接 Permission denied）。
+    #   Android 的 toybox chcon 没有 --reference，只能显式喂上下文（取自同样是 app 建的 $Prefix/home）。
+    $ctx = (((& $Adb -s $Target shell "ls -Zd $Prefix/home") -join '').Split(' ')[0]).Trim()
+    $mk = "chown -R $uid`:$uid $Dh; chmod 755 $Dh $Dh/*; rm -f $Prefix/usr/bin/$Launch; " +
+    "ln -sf $Dh/dptouch.sh $Prefix/usr/bin/$Launch; chown -h $uid`:$uid $Prefix/usr/bin/$Launch; " +
+    "chcon -h $ctx $Prefix/usr/bin/$Launch; restorecon -R $Dh"
+    & $Adb -s $Target shell $mk | Out-Null
+    $entry = ((& $Adb -s $Target shell "ls -lZ $Prefix/usr/bin/$Launch") -join '').Trim()
+    if ($entry -notmatch [regex]::Escape($ctx)) {
+        Write-Host "[X] $Prefix/usr/bin/$Launch 的 SELinux 上下文没打对，app 会 Permission denied：" -ForegroundColor Red
+        Write-Host "    $entry"
+        Write-Host "    兜底：头显里跑 sh $Sd/install.sh（由 app 自己建这个 symlink，标签天然正确）"
+    }
+    else {
+        Write-Host "[+] Termux 侧已装好：开 Termux 敲 $Launch 就能跑" -ForegroundColor Green
+    }
 }
