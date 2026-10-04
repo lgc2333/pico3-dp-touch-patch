@@ -1,0 +1,10 @@
+# 本地工作区：安装包、解包文件、抓包存档等原始材料
+temp/
+
+# get_deps 自动下载的依赖二进制（见 README，不入库）
+frida-inject
+picohaxx.neo3.bin
+
+# 运行期生成
+.headset_ip
+patch.log
