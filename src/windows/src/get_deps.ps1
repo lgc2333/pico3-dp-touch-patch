@@ -46,20 +46,8 @@ $HaxxUrls = @(
 )
 
 function Download([string[]]$urls, [string]$out) {
-    foreach ($u in $urls) {
-        Write-Host "[*] 下载 $u"
-        try {
-            if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
-                & curl.exe -fL --retry 3 --connect-timeout 15 -o $out $u
-                if ($LASTEXITCODE -eq 0 -and (Test-Path $out)) { return $true }
-            }
-            else {
-                Invoke-WebRequest -Uri $u -OutFile $out -UseBasicParsing
-                if (Test-Path $out) { return $true }
-            }
-        }
-        catch { Write-Host "[!] 失败：$($_.Exception.Message)" -ForegroundColor Yellow }
-    }
+    # 每个 URL 都试一遍（直连失败再走镜像）；下载本体在 _utils.ps1 的 Get-RemoteFile
+    foreach ($u in $urls) { if (Get-RemoteFile -Url $u -Out $out) { return $true } }
     return $false
 }
 

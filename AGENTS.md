@@ -7,11 +7,12 @@ PICO Neo 3 Pro（企业版）在「Business Streaming DP 直连」下补回手�
 ```text
 src/
   windows/            PC（Windows）侧：wrapper 在外面，实现和缓存都在里面
-    pico_touch.bat / patch_driver.bat / push.bat   双击即用的入口，只负责调 src/ 下的脚本
+    pico_touch.bat / patch_driver.bat / push.bat / downgrade_streaming.bat   双击即用的入口，只负责调 src/ 下的脚本
     src/              实现脚本（PowerShell 5.1+）
       _utils.ps1      公用：仓库路径、找/补 adb.exe、拉依赖、认/连头显、装 Termux kit（被下面几个点源）
       pico_touch.ps1  一键：找头显 → 无线 adb → picohaxx 提权 → 推送 → 设备端注入
       push.ps1        只推文件：设备端三件套 + Termux 要用的（不提权、不注入）
+      downgrade_streaming.ps1 头显端企业串流换版本：校验 sha256 的 APK → `adb uninstall` 卸用户态更新 → `adb install -r -d` → 读回 versionName/flags；PC 端安装包问过才下
       patch_driver.ps1 驱动 14 字节补丁（自己定位 DLL：注册表/OpenVR/问用户；未提权自己弹 UAC）
       get_deps.ps1    从上游拉 frida-inject / picohaxx（并打 Neo 3 补丁）/ platform-tools（-PlatformTools）
     temp/             运行期缓存：依赖二进制、`.headset_ip`（整目录被 .gitignore 忽略）
@@ -108,6 +109,7 @@ adb shell 'ls -la /data/data/com.termux/files/home/pico_touch; ls -l /data/data/
 - `get_deps.ps1`（PC 侧唯一的依赖来源）必须保持逐字节校验（上游 md5 + 补丁点原字节），任一不符即中止、不写入。
 - 驱动补丁只对 md5 `9017439d560747678b4550fcf6726808` 的 `driver_pico.dll` 有效；写入前必须校验原字节，失败即中止。
 - 固件版本决定 `picohaxx` 的内核符号偏移；换固件须重取符号（见 `docs/notes/06-root.md`），不要假设偏移通用。
+- `downgrade_streaming.ps1` 的两个上游产物（头显端 APK、PC 端安装包）必须保持 sha256 逐字节校验：`URL` 与 `Sha` 成对改，任一不符即中止（缓存里的也要每次重算）。
 
 ### 改动连带面
 

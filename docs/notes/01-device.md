@@ -23,6 +23,9 @@ DP 版     1.2.10（用户态更新，/data/app/...，flags 含 UPDATED_SYSTEM_A
 系统内置  /system/app/BStreamingAssistant（1.2.0）
 ```
 
+> DP 版的版本由用户自己装（头显不会替它升级，只有可能被覆盖安装）；换回 1.2.10 跑
+> `src/windows/downgrade_streaming.bat`：`adb uninstall` 卸用户态更新（回落 1.2.0）→ `adb install -r -d` 装回。
+
 ### 签名事实（决定了「改原 APK」不可行）
 
 - `META-INF/PLATFORM.RSA`，**Pico 自家发布证书**：`CN=AndroidTeam, OU=SW, O=Pico, L=Beijing, C=CN`

@@ -56,6 +56,26 @@ function Ensure-Deps {
     }
 }
 
+function Get-RemoteFile {
+    # 单 URL 下载到 $Out；curl.exe（Win10 自带）优先，回退 Invoke-WebRequest；返回 $true/$false
+    # 多 URL 的调用方（get_deps.ps1）自己套一层循环
+    param([string]$Url, [string]$Out)
+    Write-Host "[*] 下载 $Url"
+    try {
+        if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
+            & curl.exe -fL --retry 3 --connect-timeout 15 -o $Out $Url
+            if ($LASTEXITCODE -eq 0 -and (Test-Path $Out)) { return $true }
+        }
+        else {
+            $ProgressPreference = 'SilentlyContinue'  # PS 5.1 的进度条会让大文件慢一个数量级
+            Invoke-WebRequest -Uri $Url -OutFile $Out -UseBasicParsing
+            if (Test-Path $Out) { return $true }
+        }
+    }
+    catch { Write-Host "[!] 失败：$($_.Exception.Message)" -ForegroundColor Yellow }
+    return $false
+}
+
 function Test-TcpOpen {
     param([string]$Server, [int]$Port, [int]$TimeoutMs = 400)
     $c = New-Object Net.Sockets.TcpClient
