@@ -5,8 +5,8 @@ pico_touch.ps1 —— 一键恢复「DP 直连手柄电容触摸」
     跑完之后可以拔掉 USB 线 / 关掉这个窗口，触摸照常工作。
 
 流程：
-    1. 找头显：USB adb → 无线 adb（缓存 IP / ARP 探测）
-    2. 确保无线 adb（adb tcpip 5555），之后拔线也不影响
+    1. 找头显：USB adb → 无线 adb（缓存 IP / ARP 探测）；有 USB 就用 USB，不会自己换传输方式
+    2. 开 TCP 端口（adb tcpip 5555）：adbd 重启后头显本机也还连得上（Termux 走 127.0.0.1:5555）
     3. 用 picohaxx 拿临时 root（免解 BL、保数据）
     4. 推 frida-inject + hook.js + start_touch.sh
     5. 在设备上执行 start_touch.sh（幂等，已挂过会跳过）
@@ -47,7 +47,7 @@ foreach ($f in @("$Cache\$Haxx", "$Cache\$Inj", "$Share\hook.js", "$Share\start_
 }
 
 Write-Host '=== 1/3 认头显 ===' -ForegroundColor Cyan
-$sel = Select-Headset -Adb $Adb -Serial $Serial -IpFile $IpFile -Wireless
+$sel = Select-Headset -Adb $Adb -Serial $Serial -IpFile $IpFile
 if (-not $sel) { Write-Host '[X] 没找到头显（已取消）' -ForegroundColor Red; exit 1 }
 $D = $sel.Target
 $Serial = $sel.Serial
@@ -67,18 +67,26 @@ if ($id -match 'uid=0') {
     Write-Host '[=] 已是 root，跳过 picohaxx'
 }
 else {
-    # ★ picohaxx 只设 persist.adb.tcp.port，而 adbd 重启时读的是易失的 service.adb.tcp.port
-    #   ⇒ 先切到 TCP 模式，否则 adbd 重启后无线 adb 就没了
+    # adbd 重启后读的是易失的 service.adb.tcp.port（picohaxx 只设 persist.*）⇒ 先开这个端口，
+    # 否则提权后头显本机的 Termux 连不上 127.0.0.1:5555
     $wireless = $D -match '^\d+\.\d+\.\d+\.\d+:\d+$'
+    Write-Host '[*] 先开 TCP 端口 5555 ...'
+    & $Adb -s $D tcpip 5555 | Out-Null
     if ($wireless) {
-        Write-Host '[*] 先把 adbd 切到 TCP 模式...'
-        & $Adb -s $D tcpip 5555 | Out-Null
         Start-Sleep -Seconds 3
         & $Adb disconnect $D 2>$null | Out-Null
         & $Adb connect $D | Out-Null; Start-Sleep -Seconds 2
     }
     else {
-        Write-Host '[!] USB 直连没有无线地址：提权时 USB 会短断，等它自己回来' -ForegroundColor Yellow
+        Write-Host '[i] adbd 会重启，USB 线短断几秒（等它自己回来）'
+        $back = $false
+        for ($i = 1; $i -le 10; $i++) {
+            Start-Sleep -Seconds 2
+            if ((Get-AdbDeviceState -Adb $Adb -Target $D) -eq 'device') { $back = $true; break }
+            Write-Host "[*] 还在等 USB 回来（第 $i/10 轮）..."
+        }
+        if (-not $back) { Write-Host '[X] USB 没回来：把数据线拔下来重插一次，再从头跑本脚本' -ForegroundColor Red; exit 1 }
+        Write-Host '[+] USB 已回来'
     }
 
     Write-Host '[*] 开始提权（约 50 秒）'  # 推 picohaxx 执行 exploit；它会重启 adbd，输出全量打印

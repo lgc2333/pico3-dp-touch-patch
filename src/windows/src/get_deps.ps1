@@ -63,12 +63,17 @@ function Download([string[]]$urls, [string]$out) {
     return $false
 }
 
+# 外部命令的可执行路径；找不到返回 $null（StrictMode 下对 $null 取 .Source 会抛 PropertyNotFoundException）
+function Get-ExePath([string]$name) {
+    return (Get-Command $name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)
+}
+
 # 解 xz：依次尝试 7z / tar / xz（Windows 自带 tar 对多 block xz 可能失败）
 function Expand-Xz([string]$xz, [string]$out) {
     $sevenz = @(
-        (Get-Command 7z   -ErrorAction SilentlyContinue).Source,
-        (Get-Command 7za  -ErrorAction SilentlyContinue).Source,
-        (Get-Command 7zz  -ErrorAction SilentlyContinue).Source,
+        (Get-ExePath 7z),
+        (Get-ExePath 7za),
+        (Get-ExePath 7zz),
         "$env:LOCALAPPDATA\Microsoft\WindowsApps\7z.exe",
         "$env:ProgramFiles\7-Zip\7z.exe",
         "${env:ProgramFiles(x86)}\7-Zip\7z.exe"
@@ -87,7 +92,7 @@ function Expand-Xz([string]$xz, [string]$out) {
         Write-Verbose "tar 起不来（$($_.Exception.Message)），换 xz 解压"
     }
     Write-Host '[!] tar 解压失败，尝试 xz…' -ForegroundColor Yellow
-    $xzc = (Get-Command xz -ErrorAction SilentlyContinue).Source
+    $xzc = Get-ExePath xz
     if ($xzc) {
         & $xzc -dc "$xz" > (Join-Path $out $InjName)
         if ($LASTEXITCODE -eq 0) { return $true }

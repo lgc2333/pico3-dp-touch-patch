@@ -104,17 +104,6 @@ function Connect-AdbTarget {
     $true
 }
 
-function Get-UsbWirelessTarget {
-    # USB 直连时问它 wlan0 的地址（无线目标能扛住 picohaxx 重启 adbd）
-    param([string]$Adb, [string]$Serial, [string]$IpFile)
-    $ip = (((& $Adb -s $Serial shell "ip -4 addr show wlan0 2>/dev/null | grep -oE 'inet [0-9.]+'") -join '') -replace 'inet', '').Trim()
-    if ($ip -match '^\d+\.\d+\.\d+\.\d+$') {
-        if ($IpFile) { Set-Content -Path $IpFile -Value $ip -Encoding ascii }
-        return "$ip`:5555"
-    }
-    $null
-}
-
 function Get-WirelessCandidates {
     # 自动探测：缓存里那台 + 本机私有网段里 5555 开着的邻居
     # 只认 192.168/10./172.16-31 —— 把 198.18/15（Clash TUN 之类）和 169.254 直接排除
@@ -158,8 +147,8 @@ function Select-ByIp {
 
 function Select-Headset {
     # 返回 @{ Target = <喂给 adb 的目标>; Serial = <USB 序列号或 ''> }；用户取消返回 $null
-    # -Wireless：认下来是 USB 直连就优先换它的无线地址（picohaxx 会重启 adbd）
-    param([string]$Adb, [string]$Serial, [string]$IpFile, [switch]$Wireless)
+    # USB 直连就用 USB（无线调试要在头显里另外开，不在 USB 下记 IP）；没连接才走无线
+    param([string]$Adb, [string]$Serial, [string]$IpFile)
 
     if ($Serial) {
         if (Connect-AdbTarget -Adb $Adb -Target $Serial -IpFile $IpFile) { return @{ Target = $Serial; Serial = $Serial } }
@@ -200,19 +189,6 @@ function Select-Headset {
 
         if ($pick -match ':') { return @{ Target = $pick; Serial = '' } }  # 已经是无线目标
 
-        if ($Wireless) {
-            # USB：优先换成无线
-            $w = Get-UsbWirelessTarget -Adb $Adb -Serial $pick -IpFile $IpFile
-            if ($w -and (Connect-AdbTarget -Adb $Adb -Target $w -Serial $pick -IpFile $IpFile)) {
-                return @{ Target = $w; Serial = $pick }
-            }
-            if ((((& $Adb -s $pick shell id) -join '') -match 'uid=0')) {
-                Write-Host '[!] 没有可用无线地址，但 adbd 已是 root —— 直接用 USB' -ForegroundColor Yellow
-            }
-            else {
-                Write-Host '[!] 没有可用无线地址（Wi-Fi 没连？）—— 用 USB；提权时可能断线' -ForegroundColor Yellow
-            }
-        }
         return @{ Target = $pick; Serial = $pick }
     }
 

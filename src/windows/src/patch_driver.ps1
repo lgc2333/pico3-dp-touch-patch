@@ -48,8 +48,10 @@ if (-not $Dll) {
             $un = "$h\$v\Microsoft\Windows\CurrentVersion\Uninstall"
             if (-not (Test-Path $un)) { continue }
             foreach ($it in @(Get-ItemProperty "$un\*" -ErrorAction SilentlyContinue)) {
-                if ($it.PSObject.Properties.Name -contains 'Inno Setup: App Path') { $roots += $it.'Inno Setup: App Path' }
-                if ($it.InstallLocation) { $roots += $it.InstallLocation }
+                # StrictMode：不存在的属性直接读会抛 PropertyNotFoundException，先问属性表
+                $names = $it.PSObject.Properties.Name
+                if ($names -contains 'Inno Setup: App Path') { $roots += $it.'Inno Setup: App Path' }
+                if ($names -contains 'InstallLocation') { $roots += $it.InstallLocation }
             }
         }
     }

@@ -115,6 +115,17 @@ kill_adbd();                                      // ← pkill -9 adbd
 - **`adb tcpip 5555` 本身没问题**（实测单独跑：adbd 重启后仍以 root 跑、仍监听 `:::5555`）
 - **从 PC 走 TCP 跑 picohaxx 也没问题**（实测成功：`uid=0(root)`、adbd root、TCP 正常）
 
+### PC 侧的传输方式选择（`pico_touch.ps1`）
+
+**有 USB 就用 USB**，不主动换成无线（2026-10-05 改的：以前认下 USB 设备后会
+`adb connect <wlan0 IP>:5555` 换过去，用户看着像「无视我选的 USB 设备」）：
+
+- 提权前仍会 `adb tcpip 5555` —— 它是设**易失**的 `service.adb.tcp.port`，adbd 重启后头显本机
+  才连得上 `127.0.0.1:5555`（Termux 的 `dptouch` 走这条）
+- 代价：adbd 因此重启一次，USB gadget 重新枚举，脚本轮询等它回来（失败就提示重插线）
+- USB 下不读、也不记头显 IP（无线调试要在头显 **开发者选项**里另外开）；
+  `.headset_ip` 缓存只由「真的走无线连上了」那条路写
+
 ### 结论：Termux 侧也走 adb（借 adbd 跑），客户端换端口
 
 补成 root 的 adbd 自己占着 `127.0.0.1:5037`（实测：`adbd --root_seclabel=u:r:su:s0` 的 fd 就指着那个 LISTEN socket）

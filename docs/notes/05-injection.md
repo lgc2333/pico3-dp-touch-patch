@@ -94,17 +94,24 @@ exec /data/local/tmp/frida-inject -p "$PID" -s /data/local/tmp/hook.js -e
 
 `src\windows\pico_touch.ps1`：
 
-1. 找头显：USB adb → 无线 adb（缓存 IP → ARP 表探测 `:5555`）
-2. 确保无线 adb：`adb tcpip 5555`
+1. 认头显：有 USB 就**用 USB**（不会自己换成无线）；没插线才走无线（缓存 IP → ARP 表探测 `:5555`）
+   —— USB 下不读、也不记头显 IP：无线那条路要靠头显 **开发者选项**里的无线调试（另外开）
+2. 开 TCP 端口：`adb tcpip 5555`（USB 直连也照跑：它设的是易失的 `service.adb.tcp.port`，
+   adbd 重启后头显本机才连得上 `127.0.0.1:5555`，Termux 的 `dptouch` 靠这个）；
+   这一步会让 adbd 重启一次 ⇒ USB 线短断几秒，脚本轮询等它回来（等不到就提示重插线）
 3. picohaxx 拿 root（已是 root 则跳过）
 4. 推 3 个文件 → 执行 `start_touch.sh`
 
 ```
-=== 1/4 找头显 ===      [+] USB adb 在线 / 头显 wlan0 = <头显IP>
-=== 2/4 确保无线 adb ===  [+] 无线 adb 就绪 <头显IP>:5555
-=== 3/4 root ===        [=] 已是 root，跳过 picohaxx
-=== 4/4 推文件+注入 ===  [+] 文件已就位 / 已注入（pid=1388），跳过
-[✓] 完成。注入跑在头显本地，现在可以拔掉 USB 线 / 关掉本窗口。
+=== 1/3 认头显 ===        [+] 认定头显 = <序列号>
+[+] 用 <序列号>
+=== 2/3 抓设备侧日志 + 检查 / 获取 root ===
+[*] 先开 TCP 端口 5555 ...
+[i] adbd 会重启，USB 线短断几秒（等它自己回来）
+[+] USB 已回来
+[+] root 已获得 / [=] 已是 root，跳过 picohaxx
+=== 3/3 推文件 + 设备端注入 ===  [+] 文件已就位 / 已注入（pid=1388），跳过
+[+] 完成。现在可以拔掉 USB 线 / 关掉本窗口。
 ```
 
 ## 客观验证（PC 侧抓 HID 报文）
