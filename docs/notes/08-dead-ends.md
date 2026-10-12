@@ -108,6 +108,6 @@ mount: /dev/block/dm-6 on /vendor (ro)
 | 改 `/system`                  | ❌ 硬砖（四）                                |
 | 官方注入通道                  | ❌ 本机没开（五）                            |
 | **root + 进程内 hook**        | ✅ **可行**（picohaxx 纯内核提权，不碰分区） |
-| **PC 驱动补丁**               | ✅ 14 字节，可备份可还原                     |
+| **PC 驱动补丁**               | ✅ 可备份可还原                              |
 
-⇒ 唯一零砖风险的组合：**临时 root + `frida-inject` 进程内 hook + 驱动 14 字节补丁**。
+⇒ 唯一零砖风险的组合：**临时 root + `frida-inject` 进程内 hook + 驱动补丁**。

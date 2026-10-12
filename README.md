@@ -13,7 +13,7 @@
 A/B/X/Y、扳机、摇杆顶，六处触摸全部正常。
 
 - 头显侧只改内存，**重启失效** ⇒ 每次开机重跑一次；
-- 唯一的持久改动是 PC 上一个驱动文件的 **14 字节补丁**，可一键还原。
+- 唯一的持久改动是 PC 上一个驱动文件上的补丁，可一键还原。
 
 ## 适用条件
 
@@ -42,6 +42,7 @@ PC 上装好 **adb**（Android platform-tools，并加进 PATH）；**没装也�
 1. **完全退出** SteamVR 和 Business Streaming DP；
 2. 双击 `src\windows\patch_driver.bat`，在 UAC 弹窗点「是」；它会先备份、逐字节校验再写入；只做一次。
    `driver_pico.dll` 由脚本自己定位，找不到就直接问你要路径（粘贴进去即可，回车退出）。想跳过猜测也可以带参数 `-Dll <DLL路径>`。
+   同一个补丁顺手关掉厂商留在驱动里的调试打印：不打补丁时，一拉扳机 SteamVR Console 就会被 `pico: kTriggerTouch` 刷屏。
 
 ### 2. 头显每次开机：注入头显
 
@@ -94,6 +95,7 @@ SteamVR → 设置 → 控制器 → **测试控制器**：手指依次搭在 A/
 - **有变砖风险吗？** 头显侧只改内存；PC 侧只改一个驱动文件，且自动备份。
 - **注入完能拔线吗？** 能。注入跑在头显本地，与 PC 无关。
 - **升级固件后还能用吗？** 不一定，需要重新适配，见 [`docs/notes/06-root.md`](docs/notes/06-root.md)。
+- **SteamVR Console 一拉扳机就刷 `pico: kTriggerTouch`？** 厂商留在驱动里的调试打印（原版 DLL 就有，与本项目无关）；跑过 `patch_driver.bat` 就没有了。
 
 ## 原理（技术细节，可跳过）
 
@@ -102,7 +104,7 @@ SteamVR → 设置 → 控制器 → **测试控制器**：手指依次搭在 A/
 ```mermaid
 flowchart LR
     A["头显 pxrstreamingservice<br/>GetControllerKeyData<br/>controller_data_t +32/+36/+40/+44"] -->|Frida hook<br/>写进 HID 键值字 bit1/3/5/7| B["/dev/hidg0 USB"]
-    B --> C["PC driver_pico.dll<br/>14 字节补丁"]
+    B --> C["PC driver_pico.dll<br/>补丁"]
     C --> D["/input/*/touch"]
     D --> E["SteamVR ulButtonTouched ✓"]
 ```

@@ -1,9 +1,10 @@
 ﻿<#
 patch_driver.ps1 —— 给 PICO DP 驱动打补丁：让扳机 / 摇杆顶的电容触摸生效
 
-改动（14 字节，零长度变化）：
+改动（零长度变化）：
     /input/trigger/touch   ← 键值字 bit5   (原: 扳机模拟量 != 0)
     /input/joystick/touch  ← 键值字 bit7   (原: 摇杆偏离中位)
+    kTriggerTouch 调试打印 ← 恒跳过        (厂商遗留：拉扳机时以 ~200 Hz 刷 SteamVR Console；见 docs/notes/04-driver.md)
 
 前置：必须以管理员运行；SteamVR / Business StreamingDP 必须已退出。
 自动备份为 driver_pico.dll.orig，并校验原字节。
@@ -127,6 +128,7 @@ $b = [System.IO.File]::ReadAllBytes($orig)
 # (文件偏移, 期望原字节, 新字节, 说明)
 $patch = @(
     @{ off = 0x18bb8; old = '0F57DB410F95C0'; new = '4188F04180E020'; what = 'trigger/touch  <- bit5' },
+    @{ off = 0x18c6f; old = '740C'; new = 'EB0C'; what = 'kTriggerTouch 打印 <- 恒跳过' },
     @{ off = 0x18d1d; old = '0F57DB'; new = '4188F0'; what = 'joystick/touch <- bit7 (mov)' },
     @{ off = 0x18d27; old = '450FB6C7'; new = '4180E080'; what = 'joystick/touch <- bit7 (and)' }
 )

@@ -1,6 +1,6 @@
 ﻿# AGENTS.md
 
-PICO Neo 3 Pro（企业版）在「Business Streaming DP 直连」下补回手柄电容触摸：头显端 Frida hook + PC 驱动 14 字节补丁。面向用户的说明在 `README.md`；完整逆向记录在 `docs/`。
+PICO Neo 3 Pro（企业版）在「Business Streaming DP 直连」下补回手柄电容触摸：头显端 Frida hook + PC 驱动补丁。面向用户的说明在 `README.md`；完整逆向记录在 `docs/`。
 
 ## Structure
 
@@ -13,7 +13,7 @@ src/
       pico_touch.ps1  一键：找头显 → 无线 adb → picohaxx 提权 → 推送 → 设备端注入
       push.ps1        只推文件：设备端三件套 + Termux 要用的（不提权、不注入）
       downgrade_streaming.ps1 头显端企业串流换版本：校验 sha256 的 APK → `adb uninstall` 卸用户态更新 → `adb install -r -d` → 读回 versionName/flags；PC 端安装包问过才下
-      patch_driver.ps1 驱动 14 字节补丁（自己定位 DLL：注册表/OpenVR/问用户；未提权自己弹 UAC）
+      patch_driver.ps1 驱动补丁（自己定位 DLL：注册表/OpenVR/问用户；未提权自己弹 UAC）
       get_deps.ps1    从上游拉 frida-inject / picohaxx（并打 Neo 3 补丁）/ platform-tools（-PlatformTools）
     temp/             运行期缓存：依赖二进制、`.headset_ip`（整目录被 .gitignore 忽略）
   termux/             头显端（Termux）的 kit：装进 ~/pico_touch 即用，运行期不碰 /sdcard
@@ -114,6 +114,7 @@ adb shell 'ls -la /data/data/com.termux/files/home/pico_touch; ls -l /data/data/
 ### 改动连带面
 
 - 改脚本行为或路径 → 同步 `README.md`、本文件与相关 notes；运行期提示语以 README 为唯一权威，别在多处各抄一份。
+- 驱动补丁的字节数只在 `docs/notes/04-driver.md` 记一次 —— `README.md`、本文件与其它 notes 一律不写数字，省得每次动补丁都要全仓库同步。
 - 文档分三层：**实测 / 推测 / 设计选择** —— 别把「我们没这么做」写成「做不到」（翻过车：app 域直跑 + `settings` 垫片其实可行）；结论变了要把旧说法一起改掉。
 - 用户当场纠正的事实：**同一轮**里改到位 —— 不只改被点名那一句，同源处（脚本提示、README、本文件、notes）一起扫掉。
 

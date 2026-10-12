@@ -75,7 +75,7 @@ UpdateBoolean(+0x140, (v4 & 0x2000) != 0);   // application_menu/click ← bit13
 UpdateBoolean(+0x1F8, v12 != 0);             // trigger/touch          ← 扳机模拟量！★
 UpdateScalar (+0x160, ...);                  // trigger/value
 UpdateBoolean(+0x148, v12 == 255);           // trigger/click
-if (v4 & 0x40) log("kTriggerTouch\n");       // bit6 只用于日志
+if (v4 & 0x40) log("kTriggerTouch\n");       // bit6 只喂这条厂商遗留日志（本项目补丁恒跳过）
 // controllertype==3 走第二分支：
 //   +0x150 ← (v4 & 0x10)          // joystick/click
 //   +0x190 ← v11                  // joystick/touch ← 摇杆偏移！★
@@ -117,19 +117,23 @@ if (*(char*)(*(dev+0x2a8)+0x319) == 0) {
 
 路径 B 的掩码来自头显打包的 `PVRControllerState_`，**只在非 DP 路径经 QUIC 送达**。
 
-## 补丁（14 字节，零长度变化）—— **已应用**
+## 补丁（15 字节，零长度变化）—— **已应用**
 
-`/input/trigger/touch` ← 键值字 **bit5**；`/input/joystick/touch` ← 键值字 **bit7**
+`/input/trigger/touch` ← 键值字 **bit5**；`/input/joystick/touch` ← 键值字 **bit7**；
+厂商遗留的调试打印 `kTriggerTouch` ← 恒跳过（原版 DLL 就有：`sub_180019580` 里 `test sil,40h / jz / lea+call`，
+bit6 置位时每个输入更新打一行 ⇒ DP 直连下按住扳机 ~200 Hz 刷 SteamVR Console 与 `vrserver.txt`）
 
-| RVA           | 文件偏移  | 原字节                 | 新字节                 | 汇编                           |
-| ------------- | --------- | ---------------------- | ---------------------- | ------------------------------ |
-| `0x1800197b8` | `0x18bb8` | `0f 57 db 41 0f 95 c0` | `41 88 f0 41 80 e0 20` | `mov r8b,sil` / `and r8b,0x20` |
-| `0x18001991d` | `0x18d1d` | `0f 57 db`             | `41 88 f0`             | `mov r8b,sil`                  |
-| `0x180019927` | `0x18d27` | `45 0f b6 c7`          | `41 80 e0 80`          | `and r8b,0x80`                 |
+| RVA           | 文件偏移  | 原字节                 | 新字节                 | 汇编                              |
+| ------------- | --------- | ---------------------- | ---------------------- | --------------------------------- |
+| `0x1800197b8` | `0x18bb8` | `0f 57 db 41 0f 95 c0` | `41 88 f0 41 80 e0 20` | `mov r8b,sil` / `and r8b,0x20`    |
+| `0x18001986f` | `0x18c6f` | `74 0c`                | `eb 0c`                | `jz` → `jmp`（跳过 `lea`+`call`） |
+| `0x18001991d` | `0x18d1d` | `0f 57 db`             | `41 88 f0`             | `mov r8b,sil`                     |
+| `0x180019927` | `0x18d27` | `45 0f b6 c7`          | `41 80 e0 80`          | `and r8b,0x80`                    |
 
 - 两处 `xorps xmm3,xmm3`（ABI 卫生，`UpdateBoolean` 无浮点参数）被安全占用
 - 中间的 `mov rdx,[rdi+...]` 不改 r8b / 不改标志位，顺序无碍
 - 假设 `IVRDriverInput::UpdateBoolean(handle, bool)` 对「非零」判真（0x20/0x80 即真）——**实测有效**
+- `kTriggerTouch` 那处跳过的是 `lea rcx,str` + `call`，两行只写 `rcx`，而紧随其后的 `mov ecx, cs:dword_18009B100` 会覆盖它 ⇒ 跳过去无副作用
 
 应用：`src\windows\patch_driver.ps1`（管理员 + 已退出 SteamVR），自动备份 + 逐字节校验 + 复核。
 还原：把 `driver_pico.dll.orig`（md5 `9017439d…`）复制回 `driver_pico.dll`。
@@ -144,7 +148,7 @@ if (*(char*)(*(dev+0x2a8)+0x319) == 0) {
 | **3**  | **B/Y 电容触摸**       | 本项目新增               |
 | 4      | 摇杆 click             | 头显原有                 |
 | **5**  | **扳机电容触摸**       | 本项目新增（需驱动补丁） |
-| 6      | 扳机 click             | 头显原有                 |
+| 6      | 扳机 click             | 头显原有（只喂厂商日志） |
 | **7**  | **摇杆顶电容触摸**     | 本项目新增（需驱动补丁） |
 | 8–11   | 空闲                   | —                        |
 | 12     | system click           | 头显原有                 |
