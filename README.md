@@ -2,6 +2,8 @@
 
 > 用 DP 线串流时，手柄的「电容触摸」在 SteamVR 里失效；这个工具把它修回来。
 
+[介绍&教程视频（bilibili）](https://www.bilibili.com/video/BV1kjpA6BEwB)
+
 ## 你会遇到的现象
 
 - 手柄的**按键、摇杆、扳机都能用**；
