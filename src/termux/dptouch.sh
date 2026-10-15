@@ -22,12 +22,12 @@ mkdir -p "$LOGDIR" 2>/dev/null || true
 
 A() { adb -s "$DEV" "$@"; }
 
-up() {   # up <轮数>：每轮 2 秒，把 adb 接到本机 adbd 上
-    i=0
-    while [ "$i" -lt "$1" ]; do
+up() {   # up <轮数>：最多试 <轮数> 次、每次间隔 2 秒，成功立刻返回（计数器必须是自己独有的变量）
+    up_left=$1
+    while [ "$up_left" -gt 0 ]; do
         adb connect "$DEV" >/dev/null 2>&1
         A shell true >/dev/null 2>&1 && return 0
-        i=$((i + 1))
+        up_left=$((up_left - 1))
         sleep 2
     done
     return 1
@@ -105,11 +105,12 @@ run() {
         HTAIL=$!
         sleep 8
         kill $HAXPID $HTAIL 2>/dev/null || true       # 连接已经没意义了，别等
-        echo "[i] 等 adbd 以 root 回来…"
+        echo '[i] 等 adbd 以 root 回来…（15 轮，每轮 2 秒）'
         i=0
         while [ "$i" -lt 15 ]; do
+            sleep 2   # 节奏由这圈自己定：adbd 已经连得上时 up 会立刻返回，不能指望它当计时器
             echo "[i] 还在等 adbd 变成 root（第 $((i + 1))/15 轮）"
-            if up 2 && [ "$(A shell 'id -u' 2>/dev/null | tr -d '\r')" = "0" ]; then break; fi
+            if up 1 && [ "$(A shell 'id -u' 2>/dev/null | tr -d '\r')" = "0" ]; then break; fi
             # 自己中止（FATAL）时 adbd 没被动过：既不掉线也不变 root ⇒ 再等 30 秒也是白等
             if A shell "grep -q 'FATAL: SPINLOCK TIMEOUT' $HLOG" 2>/dev/null; then
                 echo '[!] picohaxx 自己中止了（FATAL: SPINLOCK TIMEOUT at root.c:206）'
