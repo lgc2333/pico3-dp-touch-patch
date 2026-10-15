@@ -6,6 +6,10 @@ patch_driver.ps1 —— 给 PICO DP 驱动打补丁：让扳机 / 摇杆顶的�
     /input/joystick/touch  ← 键值字 bit7   (原: 摇杆偏离中位)
     kTriggerTouch 调试打印 ← 恒跳过        (厂商遗留：拉扳机时以 ~200 Hz 刷 SteamVR Console；见 docs/notes/04-driver.md)
 
+顺手修 profile：`resources\input\pico_controller_profile.json` 里的 `"input/application_menu"` 少一个 `/`，
+    这条声明不生效 ⇒ menu 键在 SteamVR 里没反应；补成 `"/input/application_menu"`（实测补完 menu / system 键都正常）。
+    只改 JSON 文本，DLL 不读这个文件；备份为同名 `.orig`。
+
 前置：必须以管理员运行；SteamVR / Business StreamingDP 必须已退出。
 自动备份为 driver_pico.dll.orig，并校验原字节。
 
@@ -161,3 +165,35 @@ foreach ($p in $patch) {
 }
 Write-Host '[+] 复核通过。重启 SteamVR 后生效。' -ForegroundColor Green
 Write-Host '[i] 还原：把 driver_pico.dll.orig 复制回 driver_pico.dll 即可。'
+
+# --- 顺手修 profile 里的 application_menu 笔误（见文件头；纯 JSON 文本，DLL 不读它）---
+$prof = Join-Path (Split-Path (Split-Path (Split-Path $dll -Parent) -Parent) -Parent) 'resources\input\pico_controller_profile.json'
+$badKey = '"input/application_menu"'
+$goodKey = '"/input/application_menu"'
+if (-not (Test-Path -LiteralPath $prof)) {
+    Write-Host "[!] 没找到 $prof（换过版本？），跳过 profile 修补" -ForegroundColor Yellow
+}
+else {
+    $txt = [System.IO.File]::ReadAllText($prof)
+    if (-not $txt.Contains($badKey)) {
+        Write-Host '[=] profile 里的 application_menu 已经是对的，跳过'
+    }
+    elseif ($txt.Contains($goodKey)) {
+        Write-Host "[!] $prof 里同时存在正确与错误的 application_menu，跳过（人工看一眼）" -ForegroundColor Yellow
+    }
+    else {
+        $porig = "$prof.orig"
+        if (-not (Test-Path -LiteralPath $porig)) {
+            Copy-Item -LiteralPath $prof -Destination $porig -Force
+            Write-Host "[+] 已备份 -> $porig"
+        }
+        # 原文件的 BOM 有无照原样保留（厂商这份是无 BOM UTF-8）
+        $bytes = [System.IO.File]::ReadAllBytes($prof)
+        $bom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+        [System.IO.File]::WriteAllText($prof, $txt.Replace($badKey, $goodKey), (New-Object System.Text.UTF8Encoding($bom)))
+        $chk = [System.IO.File]::ReadAllText($prof)
+        if ($chk.Contains($badKey) -or -not $chk.Contains($goodKey)) { Die "application_menu 修补复核失败：$prof" }
+        Write-Host '[+] profile 已补上 /input/application_menu（menu 键在 SteamVR 里从此可用）' -ForegroundColor Green
+        Write-Host "[i] 还原：把 $porig 复制回 $(Split-Path $prof -Leaf)"
+    }
+}
