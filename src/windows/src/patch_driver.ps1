@@ -17,6 +17,11 @@ patch_driver.ps1 —— 给 PICO DP 驱动打补丁：让扳机 / 摇杆顶的�
     另补 `aim` / `openxr_aim`（值取该模型自己的 `tip`），并把 `tip` 的角度笔误改回 `-1.282`（UW / v2 / neo2 都是这个值）。
     见 docs/notes/04-driver.md；每个文件备份为同名 `.orig`。
 
+顺手修兼容模拟层：给 profile 补一行 `remapping` 引用，并在 `resources\input\` 生成
+    `pico_controller_remapping.json`（照 SteamVR 那份默认 remapping，只把 `simulate_render_model` 全关掉）。
+    SteamVR 模拟 Oculus 时会拿 Valve 的 Quest2 模型顶替渲染模型，app 取到的组件值就和 PICO 几何对不上
+    （游戏里模型被推向环那一侧 ≈9cm，SteamVR 菜单不受影响）。新版 UW 驱动自带这两样，DP 少了。
+
 前置：必须以管理员运行；SteamVR / Business StreamingDP 必须已退出。
 自动备份为 driver_pico.dll.orig，并校验原字节。
 
@@ -376,5 +381,92 @@ else {
             }
         }
         Write-Host "[+] $($m.Name)：$($changes -join ' / ')（备份 $(Split-Path $jorig -Leaf)）" -ForegroundColor Green
+    }
+}
+
+# --- 顺手修兼容模拟层（见文件头）：模拟成 Oculus 时别把渲染模型换成 Valve 的 Quest2 ---
+# 新版 UW 驱动自带这份 remapping（DP 少了这一行和这个文件），照抄一份、只关掉 simulate_render_model。
+$inRoot = Join-Path $resRoot 'input'
+$dpRemap = Join-Path $inRoot 'pico_controller_remapping.json'
+$dpProf = Join-Path $inRoot 'pico_controller_profile.json'
+$remapRel = '{pico}/input/pico_controller_remapping.json'
+
+$vrRuntime = $null
+$vp = Join-Path $env:LOCALAPPDATA 'openvr\openvrpaths.vrpath'
+if (Test-Path -LiteralPath $vp) {
+    $ovr = Get-Content -LiteralPath $vp -Raw | ConvertFrom-Json -ErrorAction SilentlyContinue
+    if ($ovr) {
+        $rt = @($ovr.runtime)
+        if ($rt.Count -gt 0) { $vrRuntime = $rt[0] }
+    }
+}
+$srRemap = $null
+if ($vrRuntime) { $srRemap = Join-Path $vrRuntime 'resources\input\default_pico_controller_remapping.json' }
+
+if (-not (Test-Path -LiteralPath $inRoot)) {
+    Write-Host "[!] 没找到 $inRoot（换过版本？），跳过兼容层修补" -ForegroundColor Yellow
+}
+elseif (-not $srRemap -or -not (Test-Path -LiteralPath $srRemap)) {
+    Write-Host '[!] 找不到 SteamVR 自带的 default_pico_controller_remapping.json，跳过兼容层修补' -ForegroundColor Yellow
+}
+else {
+    $lay = Get-Content -LiteralPath $srRemap -Raw | ConvertFrom-Json
+    foreach ($l in $lay.layouts) {
+        if (@($l.PSObject.Properties.Name) -contains 'simulate_render_model') { $l.simulate_render_model = $false }
+    }
+    $ready = $false
+    if (Test-Path -LiteralPath $dpRemap) {
+        try { $cur = Get-Content -LiteralPath $dpRemap -Raw | ConvertFrom-Json } catch { $cur = $null }
+        if ($cur) {
+            $ready = $true
+            foreach ($l in $cur.layouts) {
+                if ((@($l.PSObject.Properties.Name) -contains 'simulate_render_model') -and $l.simulate_render_model) { $ready = $false }
+            }
+        }
+    }
+    if ($ready) {
+        Write-Host '[=] remapping 已经是不换模型的状态，跳过'
+    }
+    else {
+        if (Test-Path -LiteralPath $dpRemap) {
+            if (-not (Test-Path -LiteralPath "$dpRemap.orig")) {
+                Copy-Item -LiteralPath $dpRemap -Destination "$dpRemap.orig" -Force
+                Write-Host "[+] 已备份 -> $(Split-Path "$dpRemap.orig" -Leaf)"
+            }
+        }
+        [System.IO.File]::WriteAllText($dpRemap, ($lay | ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
+        $chkRemap = $null
+        try { $chkRemap = Get-Content -LiteralPath $dpRemap -Raw | ConvertFrom-Json } catch { Die "$(Split-Path $dpRemap -Leaf) 写坏了（不再是合法 JSON）" }
+        foreach ($l in $chkRemap.layouts) {
+            if ((@($l.PSObject.Properties.Name) -contains 'simulate_render_model') -and $l.simulate_render_model) {
+                Die "$(Split-Path $dpRemap -Leaf) 复核失败：还有布局在换模型"
+            }
+        }
+        Write-Host '[+] 已生成 pico_controller_remapping.json（兼容模拟时不再替换渲染模型）' -ForegroundColor Green
+    }
+
+    if (-not (Test-Path -LiteralPath $dpProf)) {
+        Write-Host "[!] 没找到 $(Split-Path $dpProf -Leaf)，跳过 remapping 引用" -ForegroundColor Yellow
+    }
+    else {
+        $ptxt = [System.IO.File]::ReadAllText($dpProf)
+        if ($ptxt.Contains('"remapping"')) {
+            Write-Host '[=] profile 里已经有 remapping 引用，跳过'
+        }
+        else {
+            $pnew = [regex]::Replace($ptxt, '("legacy_binding"\s*:\s*"[^"]*",)', ('$1' + "`r`n  `"remapping`" : `"$remapRel`","))
+            if ($pnew -eq $ptxt) {
+                Write-Host "[!] $((Split-Path $dpProf -Leaf)) 里找不到 legacy_binding 行，跳过" -ForegroundColor Yellow
+            }
+            else {
+                $pb = [System.IO.File]::ReadAllBytes($dpProf)
+                $pbom = $pb.Length -ge 3 -and $pb[0] -eq 0xEF -and $pb[1] -eq 0xBB -and $pb[2] -eq 0xBF
+                [System.IO.File]::WriteAllText($dpProf, $pnew, (New-Object System.Text.UTF8Encoding($pbom)))
+                $chkProf = [System.IO.File]::ReadAllText($dpProf)
+                if (-not $chkProf.Contains($remapRel)) { Die "$(Split-Path $dpProf -Leaf) 复核失败：remapping 没写进去" }
+                try { $null = $chkProf | ConvertFrom-Json } catch { Die "$(Split-Path $dpProf -Leaf) 写坏了（不再是合法 JSON）" }
+                Write-Host "[+] profile 已引用 $remapRel（还原：$((Split-Path $dpProf -Leaf)).orig）" -ForegroundColor Green
+            }
+        }
     }
 }

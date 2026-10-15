@@ -47,7 +47,7 @@ PC 上装好 **adb**（Android platform-tools，并加进 PATH）；**没装也�
    `driver_pico.dll` 由脚本自己定位，找不到就直接问你要路径（粘贴进去即可，回车退出）。想跳过猜测也可以带参数 `-Dll <DLL路径>`。
    同一个补丁顺手关掉厂商留在驱动里的调试打印：不打补丁时，一拉扳机 SteamVR Console 就会被 `pico: kTriggerTouch` 刷屏。
 3. 同一个脚本还会顺手修驱动 profile 里的一个厂商笔误：`resources\input\pico_controller_profile.json` 里那条 `"input/application_menu"` 少了一个 `/`，导致这条声明不生效、**menu 键在 SteamVR 里毫无反应**；脚本把它补成 `"/input/application_menu"`（实测补完 menu / system 键都正常）。原文件备份为同目录的 `pico_controller_profile.json.orig`，已经是正确写法时会跳过。
-4. 还会顺手修**手柄渲染模型**（`resources\rendermodels\`）：DP 下游戏里手柄模型位置/角度偏（两个追踪环对顶时会互相穿插），而 SteamVR 菜单里正常 —— SteamVR 会把 PICO 手柄按应用模拟成 Oculus，游戏会拿 `grip` 这类姿势当"模型根"，而厂商模型里缺它们、只能回退到握把点。脚本把它们补成**设备原点**，并把一处角度笔误改回来。原文件备份为同目录的 `*.json.orig`。
+4. 还会顺手修**手柄渲染模型与兼容模拟层**（`resources\rendermodels\`、`resources\input\`）：DP 下游戏里手柄模型位置偏（两个追踪环对顶时会互相穿插 ≈9cm），而 SteamVR 菜单里正常 —— SteamVR 把 PICO 手柄按应用模拟成 Oculus，模拟时又会拿 Valve 的 Quest2 模型顶替驱动自带的渲染模型，游戏于是按 Quest2 的几何去摆 PICO 的模型。脚本给驱动补上它缺的 `remapping`（关掉"换模型"这一条），并修模型里缺的姿势组件与一处角度笔误。原文件分别备份为同名 `.orig`。
 
 ### 2. 头显每次开机：注入头显
 
