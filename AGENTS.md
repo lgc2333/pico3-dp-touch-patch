@@ -13,7 +13,7 @@ src/
       pico_touch.ps1  一键：找头显 → 无线 adb → picohaxx 提权 → 推送 → 设备端注入
       push.ps1        只推文件：设备端三件套 + Termux 要用的（不提权、不注入）
       downgrade_streaming.ps1 头显端企业串流换版本：校验 sha256 的 APK → `adb uninstall` 卸用户态更新 → `adb install -r -d` → 读回 versionName/flags；PC 端安装包问过才下
-      patch_driver.ps1 驱动补丁（自己定位 DLL：注册表/OpenVR/问用户；未提权自己弹 UAC）；顺手把 profile 里写成 `input/application_menu` 的斜杠补上（补完 menu 键才在 SteamVR 里生效）
+      patch_driver.ps1 驱动补丁（自己定位 DLL：注册表/OpenVR/问用户；未提权自己弹 UAC）；顺手补 profile 里 `input/application_menu` 的斜杠（补完 menu 键才在 SteamVR 里生效）+ 给 `rendermodels\*.json` 补 SteamVR 兼容层要取的 pose 组件、修 `tip` 角度笔误（机制见 `docs/notes/04-driver.md`）
       get_deps.ps1    从上游拉 frida-inject / picohaxx（并打 Neo 3 补丁）/ platform-tools（-PlatformTools）
     temp/             运行期缓存：依赖二进制、`.headset_ip`（整目录被 .gitignore 忽略）
   termux/             头显端（Termux）的 kit：装进 ~/pico_touch 即用，运行期不碰 /sdcard

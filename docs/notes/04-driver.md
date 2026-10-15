@@ -51,7 +51,7 @@ profile 按 `controllertype` 二选一（`GetPrivateProfileIntW("PICO","controll
 - SteamVR 侧另有一份兜底：`SteamVR\resources\input\default_pico_controller_profile.json`（`"is_stub": true`，`input_source` 与厂商 DP 那份**逐字一致**，连 `input/application_menu` 的笔误都照抄；另带 `simulation_settings.legacy_buttons=[0,1,2,7,32,33,34]`）与 `default_pico_controller_remapping.json`（khr_generic / `oculus_touch` / `knuckles` / `hand_interaction_ext` / `vive_controller` / `khr_simple` 的 simulate + autoremapping）。
 - **「模拟另一只手柄」还是「翻译绑定」由驱动 profile 的 `remapping` 字段决定，不是 SteamVR 那份 stub 决定**（实测 2026-10-16，用户实机）：换上 v2 的 neo3 profile（**没有** `remapping` 字段）后，Alyx 的绑定页显示「有效的控制器 = **Pico Controller**」+「此绑定已自动重映射至您的控制器」，`vrserver.txt` 成片 `[Remapping] ... oculus_touch to ... pico_controller` ⇒ 走的是**兼容翻译**，不是模拟 Oculus Touch。厂商的 `pico_controller_remapping.json` 头一条 layout 恰好是 `oculus_touch` + `simulate_controller_type: true`，但**只有那份没人加载的通用 `pico_controller_profile.json` 引用它**，neo3 profile（DP 与 v2 都实际加载它）不引用。
 - ⚠️ 因此**别随手挂上那份 remapping**：它的 oculus_touch autoremappings 只映射 grip / trigger / joystick / x / y / a / b（还有两处 `/user/hand/rgiht/...` 拼错、等于无效），**没有任何 touch 子输入** ⇒ 改成"模拟 Oculus Touch"很可能会把本项目刚补回来的触摸又丢掉。
-- **Alyx 的手指动画走 `skeleton` 输入，不是 capsense 绑定**（实测它的 `bindings_touch.json`：`/user/hand/*/input/skeleton/*` → `/actions/default/in/HandSkeletonLeft|Right`，整份里**没有**任何 `touch` 条目；这里的 Touch 指 Oculus Touch 手柄）⇒ 本项目补的 capsense 要变成手指动作，得靠 SteamVR 自己**合成骨架**。VRChat 那套才是显式 `touch → gesture_activator_thumb/index/grip`，而 SteamVR 的自动重映射**不丢** touch（实测 `SteamVR\config\openxr\auto-remapping_{from,to}Binding.json` 只差一句 description）。
+- **Alyx 的手指动画走 `skeleton` 输入，不是 capsense 绑定**（实测它的 `bindings_touch.json`：`/user/hand/*/input/skeleton/*` → `/actions/default/in/HandSkeletonLeft|Right`，整份里**没有**任何 `touch` 条目；这里的 Touch 指 Oculus Touch 手柄）⇒ 本项目补的 capsense 要变成手指动作，得靠 SteamVR 自己**合成骨架**（而 DP 驱动没实现 skeleton ⇒ 骨架输出建不出来，见文末「待办」）。VRChat 那套才是显式 `touch → gesture_activator_thumb/index/grip`，而 SteamVR 的自动重映射**不丢** touch（实测 `SteamVR\config\openxr\auto-remapping_{from,to}Binding.json` 只差一句 description）。
 - SteamVR 的 stub profile 另有一整块 `simulation_settings`（`hmd_profile: rift`、模型号、`tracking_system_name: oculus`、`manufacturer_name: Oculus`、`legacy_buttons/axis`），厂商 profile 没有这块 —— 推测「模拟成 Oculus Touch 后 SteamVR 才会合成骨架/手指」就靠它，**未实测**。
 - **profile 里没声明的输入，`CreateBooleanComponent` 静默失败、句柄留 0**（驱动从不检查返回值）
 - `triggertest`（`RVRPlugin.ini` 的 `[PICO] triggertest=202`）是**死配置**：全二进制只有 1 处写、0 处读
@@ -71,6 +71,25 @@ profile 按 `controllertype` 二选一（`GetPrivateProfileIntW("PICO","controll
 4. 搬之前一定留全量备份，并记下"哪些是新增文件"—— 只按"备份里没有就删"还原会误删厂商原有文件（实测踩过：`controller_left.svg` / `controller_right.svg` / `headset.svg` 被一起删了，靠打预设前的整体副本才救回来）。
 
 - SteamVR 按应用缓存绑定（`%LOCALAPPDATA%\openvr\`）：改完没变化时先在绑定界面点「恢复默认绑定」，或清掉该应用的缓存绑定。
+
+## 渲染模型层：兼容模拟下缺 pose 组件 ⇒ 游戏里手柄错位（实测 2026-10-16）
+
+`controllertype=3` 时驱动报 PICO 身份 + `{pico}/rendermodels/pico_neo3_*controller`，但 SteamVR 的兼容层会**按 app** 把手柄模拟成 Oculus Touch —— 身份是 Touch / Quest 2 的约定，几何仍是 PICO 那份：
+
+```
+vrclient_hlvr.txt    [Input] Loaded input profile for simulated controller type: oculus_touch
+vrclient_hlvr.txt    [Simulation] Setting device 1/2 with override properties for oculus_touch
+vrclient_hlvr.txt    RendermodelManager: Reading data for: 'oculus_quest2_controller_right'
+                     from 'D:\...\BusinessStreamingDP\driver\resources\rendermodels\pico_neo3_rightcontroller\pico_neo3_rightcontroller.json'
+```
+
+- 触发源是 **SteamVR 自带的** `resources\input\default_pico_controller_remapping.json`（`from_controller_type: oculus_touch` 布局带 `simulate_controller_type` / `simulate_render_model` / `simulate_HMD`）；厂商 DP profile 只有 `compatibility_mode_controller_type`，`vrserver.txt` 另有 `Cannot use 'compatibility_mode_controller_type' and 'remapping' in the same input profile. ... will be ignored.` ⇒ 实际生效的是 stub 那份。
+- **SteamVR 菜单（compositor）不走这一层**，所以只有游戏里错位：**模型造型不变、位置/角度偏**（用户实测：现实里两个追踪环对顶，游戏里会互相穿插；Alyx 里手部模型正常显示、但位置同样偏）。Alyx / VRChat / TheLab / steamtours 都触发。
+- 直接原因（日志原话）：`RendermodelManager: Both grip and aim are at 0, couldn't guess which direction is outwards for poke/pinch creation.` —— 厂商模型只声明 `handgrip` / `tip`，**没有** `grip` / `aim` / `openxr_grip` / `openxr_aim`（Valve 给 Touch / Quest 2 的模型都有），SteamVR 取不到就当 0 ⇒ 模型被摆在追踪原点而不是握把/指向点。
+- 另外 DP 这份的 `tip.rotate_xyz` 是 `[-21.282,3.0,0.0]`，而 **UW / v2 / DP 自己的 neo2 都是 `-1.282`** ⇒ DP 独有、疑似笔误；以 `tip`（= `openxr_aim` 的回退）为准的游戏会指向偏约 22°。
+- `pico_neo2_*_oculus.json` 与本体**只差一个空白字符**（几何/原点没做任何适配），`_vive.json` 才是真换了语义（joystick→trackpad）；DLL 里没有这两个后缀的字符串 ⇒ 三份变体实际没人引用。
+- 修法（已进 `patch_driver.ps1`）：给 `resources\rendermodels\*\*.json` 补 `grip` / `openxr_grip`（值取该模型自己的 `handgrip`）与 `aim` / `openxr_aim`（值取 `tip`），并把 DP 那处 `tip` 角度改回 `-1.282`；每个文件备份同名 `.orig`。
+- 不选：让 SteamVR 停止模拟（改 `default_pico_controller_remapping.json` 的 `simulate_*`）必须连带补 autoremappings，否则按键失效，且那份 remapping 没有 touch 子输入 ⇒ 会丢掉本项目补回来的触摸，代价过大。
 
 ## 镜像基址 `0x180000000`；RVA↔文件偏移 `rva = file + 0xc00`
 
@@ -232,3 +251,8 @@ bit6 置位时每个输入更新打一行 ⇒ DP 直连下按住扳机 ~200 Hz �
 | `sub_180026E60` / `sub_1800274B0` / `sub_180027EF0` | type0 / type1,2 / type3 处理（IMU 解算）                |
 | `sub_18002CE90`                                     | UDP `recvfrom` 接收线程                                 |
 | `sub_18003D610`                                     | 控制器状态入口（HID 与 UDP 多路调用）                   |
+
+## 待办
+
+- **DP 驱动没实现 skeleton 输入**：DP / UW / v2 / SteamVR stub 四份 profile 都声明了 `/input/skeleton/{left,right}`，但 DP 的 `driver_pico.dll`（669,536B）里**一个 `skeleton` 字符串都没有**，而 UW 驱动（905,216B）有 `/skeleton/hand/{left,right}` ⇒ Alyx 日志报 `Item /user/hand/left/input/skeleton/left in "skeleton" array missing path invalid device path for skeleton output`。
+  表现（用户实测）：**Alyx 里手部模型正常显示**，缺的是**手指只是搭在按键/摇杆上（不按下）时**的手指动作 —— Alyx 的手指动画走 `skeleton` 输入而不是 capsense 绑定（见上面「输入声明层」），骨架输出建不出来 ⇒ 触摸没有手指反馈。这是驱动功能缺失，数据层修不了。

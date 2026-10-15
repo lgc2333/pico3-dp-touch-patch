@@ -10,6 +10,11 @@ patch_driver.ps1 —— 给 PICO DP 驱动打补丁：让扳机 / 摇杆顶的�
     这条声明不生效 ⇒ menu 键在 SteamVR 里没反应；补成 `"/input/application_menu"`（实测补完 menu / system 键都正常）。
     只改 JSON 文本，DLL 不读这个文件；备份为同名 `.orig`。
 
+顺手修渲染模型：`resources\rendermodels\*\*.json` 补上 SteamVR 兼容层要取的 pose 组件
+    （`grip` / `aim` / `openxr_grip` / `openxr_aim`，值取该模型自己的 `handgrip` / `tip`），
+    并把 `tip` 的角度笔误改回 `-1.282`（UW / v2 / neo2 都是这个值）。
+    缺这些组件时 SteamVR 取到 0 ⇒ 被模拟成 Oculus 的游戏里手柄模型错位（SteamVR 菜单不受影响）。见 docs/notes/04-driver.md。
+
 前置：必须以管理员运行；SteamVR / Business StreamingDP 必须已退出。
 自动备份为 driver_pico.dll.orig，并校验原字节。
 
@@ -164,7 +169,7 @@ foreach ($p in $patch) {
     if ($got -ne $p.new) { Die "复核失败：0x$($p.off.ToString('X')) = $got" }
 }
 Write-Host '[+] 复核通过。重启 SteamVR 后生效。' -ForegroundColor Green
-Write-Host '[i] 还原：把 driver_pico.dll.orig 复制回 driver_pico.dll 即可。'
+Write-Host '[i] 还原：把同名 .orig 覆盖回去（driver_pico.dll / profile / rendermodels\*.json 三处都有）。'
 
 # --- 顺手修 profile 里的 application_menu 笔误（见文件头；纯 JSON 文本，DLL 不读它）---
 $prof = Join-Path (Split-Path (Split-Path (Split-Path $dll -Parent) -Parent) -Parent) 'resources\input\pico_controller_profile.json'
@@ -195,5 +200,142 @@ else {
         if ($chk.Contains($badKey) -or -not $chk.Contains($goodKey)) { Die "application_menu 修补复核失败：$prof" }
         Write-Host '[+] profile 已补上 /input/application_menu（menu 键在 SteamVR 里从此可用）' -ForegroundColor Green
         Write-Host "[i] 还原：把 $porig 复制回 $(Split-Path $prof -Leaf)"
+    }
+}
+
+# --- 顺手修手柄渲染模型（见文件头；纯 JSON 文本，DLL 不读它）---
+# 兼容层模拟成 Oculus 时 SteamVR 去取 grip / aim / openxr_*，厂商模型只有 handgrip / tip ⇒ 取到 0、模型错位。
+$resRoot = Join-Path (Split-Path (Split-Path (Split-Path $dll -Parent) -Parent) -Parent) 'resources'
+$rmRoot = Join-Path $resRoot 'rendermodels'
+
+# 要补的组件 ← 取哪个现成组件的值（都是同一套模型坐标）
+$addFrom = @(
+    @{ name = 'grip'; src = 'handgrip' },
+    @{ name = 'openxr_grip'; src = 'handgrip' },
+    @{ name = 'aim'; src = 'tip' },
+    @{ name = 'openxr_aim'; src = 'tip' }
+)
+$tipBad = '[-21.282,3.0,0.0]'  # DP 独有；UW / v2 / neo2 都是 -1.282
+$tipGood = '[-1.282,0.0,0.0]'
+
+# 组件块的首末行号（缩进 ≤8 空格的 `}` 收尾，厂商的 component_local 收尾缩进是乱的）
+function Get-ComponentRange {
+    param([string[]]$Lines, [string]$Name)
+    for ($i = 0; $i -lt $Lines.Count; $i++) {
+        if ($Lines[$i] -notmatch ('^\s*"' + [regex]::Escape($Name) + '"\s*:\s*\{')) { continue }
+        for ($j = $i + 1; $j -lt $Lines.Count; $j++) {
+            if ($Lines[$j] -match '^\s{0,8}\}\s*,?\s*$') { return @($i, $j) }
+        }
+        return @($i, $Lines.Count - 1)
+    }
+    return $null
+}
+
+# 取组件里的 origin / rotate_xyz 原文（按厂商的 16 空格缩进重排）
+function Get-ComponentLocalLine {
+    param([string[]]$Lines, [int]$From, [int]$To, [string]$Key)
+    for ($i = $From; $i -le $To; $i++) {
+        if ($Lines[$i] -match ('"' + [regex]::Escape($Key) + '"\s*:')) { return ('                ' + $Lines[$i].Trim()) }
+    }
+    return $null
+}
+
+if (-not (Test-Path -LiteralPath $rmRoot)) {
+    Write-Host "[!] 没找到 $rmRoot（换过版本？），跳过渲染模型修补" -ForegroundColor Yellow
+}
+else {
+    $models = @(Get-ChildItem -LiteralPath $rmRoot -Directory | Where-Object { $_.Name -match '^pico_[a-z0-9_]+_(left|right)controller$' })
+    if (-not $models) { Write-Host '[!] rendermodels 里没有 pico 手柄模型，跳过' -ForegroundColor Yellow }
+    foreach ($m in $models) {
+        $json = Join-Path $m.FullName ($m.Name + '.json')
+        if (-not (Test-Path -LiteralPath $json)) {
+            Write-Host "[!] $($m.Name) 里没有 $(Split-Path $json -Leaf)，跳过" -ForegroundColor Yellow
+            continue
+        }
+        $jorig = "$json.orig"
+        $live = [System.IO.File]::ReadAllText($json)
+        try { $null = $live | ConvertFrom-Json } catch {
+            Write-Host "[!] $(Split-Path $json -Leaf) 不是合法 JSON（厂商原件即如此），跳过" -ForegroundColor Yellow
+            continue
+        }
+        if (-not (Test-Path -LiteralPath $jorig)) {
+            Copy-Item -LiteralPath $json -Destination $jorig -Force
+            Write-Host "[+] 已备份 -> $(Split-Path $jorig -Leaf)"
+        }
+        $text = [System.IO.File]::ReadAllText($jorig)  # 从 .orig 重算，重复跑得到同一结果
+        $nb = [System.IO.File]::ReadAllBytes($jorig)
+        $bom = $nb.Length -ge 3 -and $nb[0] -eq 0xEF -and $nb[1] -eq 0xBB -and $nb[2] -eq 0xBF
+        $nl = "`n"
+        if ($text.Contains("`r`n")) { $nl = "`r`n" }
+        $lines = New-Object System.Collections.Generic.List[string]
+        $lines.AddRange([string[]]$text.Split([string[]]@($nl), [System.StringSplitOptions]::None))
+
+        $rg = Get-ComponentRange -Lines $lines.ToArray() -Name 'handgrip'
+        $rt = Get-ComponentRange -Lines $lines.ToArray() -Name 'tip'
+        if (-not $rg -or -not $rt) {
+            Write-Host "[!] $(Split-Path $json -Leaf) 缺 handgrip / tip 组件，跳过" -ForegroundColor Yellow
+            continue
+        }
+
+        $changes = @()
+        for ($i = $rt[0]; $i -le $rt[1]; $i++) {
+            if ($lines[$i] -notmatch '"rotate_xyz"\s*:') { continue }
+            if ($lines[$i].Contains($tipBad)) {
+                $lines[$i] = $lines[$i].Replace($tipBad, $tipGood)
+                $changes += 'tip 角度'
+            }
+            break
+        }
+
+        $compIdx = -1
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^\s*"components"\s*:\s*\{') { $compIdx = $i; break }
+        }
+        if ($compIdx -lt 0) {
+            Write-Host "[!] $(Split-Path $json -Leaf) 没有 components 块，跳过" -ForegroundColor Yellow
+            continue
+        }
+        $rg = Get-ComponentRange -Lines $lines.ToArray() -Name 'handgrip'
+        $rt = Get-ComponentRange -Lines $lines.ToArray() -Name 'tip'
+        $ins = New-Object System.Collections.Generic.List[string]
+        foreach ($a in $addFrom) {
+            if (Get-ComponentRange -Lines $lines.ToArray() -Name $a.name) { continue }
+            $src = $rg
+            if ($a.src -eq 'tip') { $src = $rt }
+            $origin = Get-ComponentLocalLine -Lines $lines.ToArray() -From $src[0] -To $src[1] -Key 'origin'
+            $rot = Get-ComponentLocalLine -Lines $lines.ToArray() -From $src[0] -To $src[1] -Key 'rotate_xyz'
+            if (-not $origin -or -not $rot) {
+                Write-Host "[!] $(Split-Path $json -Leaf)：$($a.name) 取不到源组件值，跳过这一条" -ForegroundColor Yellow
+                continue
+            }
+            $ins.Add('        "' + $a.name + '": {')
+            $ins.Add('            "component_local" : {')
+            $ins.Add($origin)
+            $ins.Add($rot)
+            $ins.Add('            }')
+            $ins.Add('        },')
+            $changes += $a.name
+        }
+        if ($ins.Count) { $lines.InsertRange($compIdx + 1, $ins) }
+        if (-not $changes.Count) {
+            Write-Host "[=] $($m.Name)：组件与角度都已是对的，跳过"
+            continue
+        }
+        $out = ($lines -join $nl)
+        if ([System.IO.File]::ReadAllText($json) -eq $out) {
+            Write-Host "[=] $($m.Name)：已经补过，跳过"
+            continue
+        }
+
+        [System.IO.File]::WriteAllText($json, $out, (New-Object System.Text.UTF8Encoding($bom)))
+
+        $chk = [System.IO.File]::ReadAllText($json)
+        $j = $null
+        try { $j = $chk | ConvertFrom-Json } catch { Die "$(Split-Path $json -Leaf) 写坏了（不再是合法 JSON）" }
+        foreach ($a in $addFrom) {
+            if (@($j.components.PSObject.Properties.Name) -notcontains $a.name) { Die "$(Split-Path $json -Leaf) 复核失败：缺 $($a.name)" }
+        }
+        if ($chk.Contains($tipBad)) { Die "$(Split-Path $json -Leaf) 复核失败：tip 角度没改掉" }
+        Write-Host "[+] $($m.Name)：$($changes -join ' / ')（备份 $(Split-Path $jorig -Leaf)）" -ForegroundColor Green
     }
 }

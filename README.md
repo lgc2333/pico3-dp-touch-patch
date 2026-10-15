@@ -15,7 +15,8 @@
 A/B/X/Y、扳机、摇杆顶，六处触摸全部正常。
 
 - 头显侧只改内存，**重启失效** ⇒ 每次开机重跑一次；
-- 唯一的持久改动是 PC 上一个驱动文件上的补丁，可一键还原。
+- 持久改动只有 PC 上驱动自带的几个文件（驱动 DLL + 两个 JSON），都可一键还原；
+- 顺带修掉 DP 下「**游戏里手柄模型错位**、SteamVR 菜单里却正常」的问题。
 
 ## 适用条件
 
@@ -46,6 +47,7 @@ PC 上装好 **adb**（Android platform-tools，并加进 PATH）；**没装也�
    `driver_pico.dll` 由脚本自己定位，找不到就直接问你要路径（粘贴进去即可，回车退出）。想跳过猜测也可以带参数 `-Dll <DLL路径>`。
    同一个补丁顺手关掉厂商留在驱动里的调试打印：不打补丁时，一拉扳机 SteamVR Console 就会被 `pico: kTriggerTouch` 刷屏。
 3. 同一个脚本还会顺手修驱动 profile 里的一个厂商笔误：`resources\input\pico_controller_profile.json` 里那条 `"input/application_menu"` 少了一个 `/`，导致这条声明不生效、**menu 键在 SteamVR 里毫无反应**；脚本把它补成 `"/input/application_menu"`（实测补完 menu / system 键都正常）。原文件备份为同目录的 `pico_controller_profile.json.orig`，已经是正确写法时会跳过。
+4. 还会顺手修**手柄渲染模型**（`resources\rendermodels\`）：DP 下游戏里手柄模型位置/角度偏、两个追踪环对顶时会互相穿插，而 SteamVR 菜单里正常 —— SteamVR 会把 PICO 手柄按应用模拟成 Oculus，去取厂商模型没声明的几个姿势组件。脚本把这些组件补齐，并把一处角度笔误改回来。原文件备份为同目录的 `*.json.orig`。
 
 ### 2. 头显每次开机：注入头显
 
@@ -90,6 +92,7 @@ SteamVR → 设置 → 控制器 → **测试控制器**：手指依次搭在 A/
 | ------------------------- | --------------------------------------------------------------------------------------------------- |
 | PC 驱动（唯一的持久改动） | 把同目录的 `driver_pico.dll.orig` 复制回 `driver_pico.dll`；或重装 DP 驱动                          |
 | profile 的 menu 键修补    | 把 `driver\resources\input\pico_controller_profile.json.orig` 复制回同名文件                        |
+| 手柄渲染模型修补          | 把 `driver\resources\rendermodels\*\*.json.orig` 复制回同名文件                                     |
 | 头显 root + 注入          | 重启即失效；也可 `picohaxx -unroot`                                                                 |
 | 推送到头显的文件          | 删除 `/data/local/tmp/{frida-inject,hook.js,start_touch.sh}`、`~/pico_touch`、`$PREFIX/bin/dptouch` |
 
