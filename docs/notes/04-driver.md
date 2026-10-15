@@ -85,10 +85,11 @@ vrclient_hlvr.txt    RendermodelManager: Reading data for: 'oculus_quest2_contro
 
 - 触发源是 **SteamVR 自带的** `resources\input\default_pico_controller_remapping.json`（`from_controller_type: oculus_touch` 布局带 `simulate_controller_type` / `simulate_render_model` / `simulate_HMD`）；厂商 DP profile 只有 `compatibility_mode_controller_type`，`vrserver.txt` 另有 `Cannot use 'compatibility_mode_controller_type' and 'remapping' in the same input profile. ... will be ignored.` ⇒ 实际生效的是 stub 那份。
 - **SteamVR 菜单（compositor）不走这一层**，所以只有游戏里错位：**模型造型不变、位置/角度偏**（用户实测：现实里两个追踪环对顶，游戏里会互相穿插；Alyx 里手部模型正常显示、但位置同样偏）。Alyx / VRChat / TheLab / steamtours 都触发。
-- 直接原因（日志原话）：`RendermodelManager: Both grip and aim are at 0, couldn't guess which direction is outwards for poke/pinch creation.` —— 厂商模型只声明 `handgrip` / `tip`，**没有** `grip` / `aim` / `openxr_grip` / `openxr_aim`（Valve 给 Touch / Quest 2 的模型都有），SteamVR 取不到就当 0 ⇒ 模型被摆在追踪原点而不是握把/指向点。
+- 直接原因（日志原话）：`RendermodelManager: Both grip and aim are at 0, couldn't guess which direction is outwards for poke/pinch creation.` ⚠️ **这句不是"模型缺组件"的意思**：把 `grip` / `aim` 组件补进模型后它**照旧出现**（2026-10-16 实测）⇒ 它读的不是模型里的 `component_local`，别再拿它当判据。
 - 另外 DP 这份的 `tip.rotate_xyz` 是 `[-21.282,3.0,0.0]`，而 **UW / v2 / DP 自己的 neo2 都是 `-1.282`** ⇒ DP 独有、疑似笔误；以 `tip`（= `openxr_aim` 的回退）为准的游戏会指向偏约 22°。
 - `pico_neo2_*_oculus.json` 与本体**只差一个空白字符**（几何/原点没做任何适配），`_vive.json` 才是真换了语义（joystick→trackpad）；DLL 里没有这两个后缀的字符串 ⇒ 三份变体实际没人引用。
-- 修法（已进 `patch_driver.ps1`）：给 `resources\rendermodels\*\*.json` 补 `grip` / `openxr_grip`（值取该模型自己的 `handgrip`）与 `aim` / `openxr_aim`（值取 `tip`），并把 DP 那处 `tip` 角度改回 `-1.282`；每个文件备份同名 `.orig`。
+- **姿势源侧的证据（2026-10-16 补，实测/快照）**：① DP 驱动 DLL 里 **`/pose/*` 与 `/skeleton/*` 一个都没有**，UW / v2 则有 `/pose/raw` + `/skeleton/hand/{left,right}`；② 机器上留的 UW 会话快照 `openvr\logs\properties.json` 里 `/pose/grip` = **单位矩阵**、`/pose/handgrip` = (0, 0.003, 0.097)、`/pose/tip` = (0, −0.01, −0.007)、`/pose/openxr_grip` 与 `/pose/aim` **不存在**；③ profile 的 `input_source` 只声明 `raw / base / handgrip / tip / openxr_aim`；④ 用户实测：让两个**虚拟**环相碰时现实里还差 ≈9cm，与 `handgrip` 的 9.7cm 同量级。
+- 修法（已进 `patch_driver.ps1`）：给 `resources\rendermodels\*\*.json` 补 `grip` / `openxr_grip`，**值写成单位矩阵（= 设备原点）** —— PICO 的网格自带 +0.097 偏移，app 把这两个姿势当"模型根"用时不能再叠一次握把偏移；另补 `aim` / `openxr_aim`（值取 `tip`），并把 DP 那处 `tip` 角度改回 `-1.282`。每个文件备份同名 `.orig`。**（机制为推测，待实机验证）**
 - 不选：让 SteamVR 停止模拟（改 `default_pico_controller_remapping.json` 的 `simulate_*`）必须连带补 autoremappings，否则按键失效，且那份 remapping 没有 touch 子输入 ⇒ 会丢掉本项目补回来的触摸，代价过大。
 
 ## 镜像基址 `0x180000000`；RVA↔文件偏移 `rva = file + 0xc00`
