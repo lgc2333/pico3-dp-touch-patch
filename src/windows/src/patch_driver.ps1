@@ -1,4 +1,4 @@
-﻿<#
+<#
 patch_driver.ps1 —— 给 PICO DP 驱动打补丁：让扳机 / 摇杆顶的电容触摸生效
 
 改动（零长度变化）：
@@ -10,12 +10,11 @@ patch_driver.ps1 —— 给 PICO DP 驱动打补丁：让扳机 / 摇杆顶的�
     这条声明不生效 ⇒ menu 键在 SteamVR 里没反应；补成 `"/input/application_menu"`（实测补完 menu / system 键都正常）。
     只改 JSON 文本，DLL 不读这个文件；备份为同名 `.orig`。
 
-顺手修渲染模型：`resources\rendermodels\*\*.json`
-    补 `grip` / `openxr_grip` 两个姿势组件，**值写成单位矩阵**（= 设备原点）：PICO 的网格自带 +0.097 偏移，
-    app 把这两个姿势当"模型根"用时不能再叠加一次握把偏移，否则游戏里模型被整体推出去 ≈9cm
-    （SteamVR 菜单用设备 pose，所以只有游戏里错位）。
-    另补 `aim` / `openxr_aim`（值取该模型自己的 `tip`），并把 `tip` 的角度笔误改回 `-1.282`（UW / v2 / neo2 都是这个值）。
-    见 docs/notes/04-driver.md；每个文件备份为同名 `.orig`。
+顺手修渲染模型：`resources\rendermodels\*\*.json` 只把 `tip` 的角度笔误改回 `-1.282`
+    （UW / v2 / neo2 都是这个值；DP 那份写成了 `-21.282,3,0`，会让以 `tip` 为准的游戏指向偏约 22°）。
+    ⚠️ 早前试过给模型补 `grip` / `openxr_grip` / `aim` / `openxr_aim` 等姿势组件，实机验证**对游戏里的错位无效**
+    （app 只读 `pose/raw`），已回滚；脚本从 `.orig` 重算，重跑一次即回到"只有 tip 修正"的状态。
+    每个文件备份为同名 `.orig`。
 
 顺手修兼容模拟层：给 profile 补一行 `remapping` 引用，并在 `resources\input\` 生成
     `pico_controller_remapping.json`（照 SteamVR 那份默认 remapping，只把 `simulate_render_model` 全关掉）。
@@ -211,19 +210,10 @@ else {
 }
 
 # --- 顺手修手柄渲染模型（见文件头；纯 JSON 文本，DLL 不读它）---
-# 兼容层模拟成 Oculus 时，app 会把 grip / openxr_grip 当"模型根"用；厂商模型没有这两个组件，
-# 就回退到 handgrip（握把点，+0.097）⇒ 游戏里模型被整体推出去 ≈9cm（SteamVR 菜单用设备 pose，不受影响）。
+# 只修 tip 的角度笔误。之前试过补 grip / openxr_grip / aim / openxr_aim 等姿势组件，
+# 实测对游戏里的错位无效（app 只读 pose/raw），已回滚；见 docs/notes/04-driver.md。
 $resRoot = Join-Path (Split-Path (Split-Path (Split-Path $dll -Parent) -Parent) -Parent) 'resources'
 $rmRoot = Join-Path $resRoot 'rendermodels'
-
-# 要补 / 要改的姿势组件；src = $null 表示写成单位矩阵（= 设备原点）
-# PICO 的网格自带 +0.097 偏移，所以"模型根"必须是原点，不能是握把点
-$targets = @(
-    @{ name = 'grip'; src = $null },
-    @{ name = 'openxr_grip'; src = $null },
-    @{ name = 'aim'; src = 'tip' },
-    @{ name = 'openxr_aim'; src = 'tip' }
-)
 $tipBad = '[-21.282,3.0,0.0]'  # DP 独有；UW / v2 / neo2 都是 -1.282
 $tipGood = '[-1.282,0.0,0.0]'
 
@@ -238,24 +228,6 @@ function Get-ComponentRange {
         return @($i, $Lines.Count - 1)
     }
     return $null
-}
-
-# 取组件里的 origin / rotate_xyz 原文（按厂商的 16 空格缩进重排）
-function Get-ComponentLocalLine {
-    param([string[]]$Lines, [int]$From, [int]$To, [string]$Key)
-    for ($i = $From; $i -le $To; $i++) {
-        if ($Lines[$i] -match ('"' + [regex]::Escape($Key) + '"\s*:')) { return ('                ' + $Lines[$i].Trim()) }
-    }
-    return $null
-}
-
-# 取组件里 origin / rotate_xyz 的行号（原地改值用）
-function Get-ComponentLocalIndex {
-    param([string[]]$Lines, [int]$From, [int]$To, [string]$Key)
-    for ($i = $From; $i -le $To; $i++) {
-        if ($Lines[$i] -match ('"' + [regex]::Escape($Key) + '"\s*:')) { return $i }
-    }
-    return -1
 }
 
 if (-not (Test-Path -LiteralPath $rmRoot)) {
@@ -288,10 +260,9 @@ else {
         $lines = New-Object System.Collections.Generic.List[string]
         $lines.AddRange([string[]]$text.Split([string[]]@($nl), [System.StringSplitOptions]::None))
 
-        $rg = Get-ComponentRange -Lines $lines.ToArray() -Name 'handgrip'
         $rt = Get-ComponentRange -Lines $lines.ToArray() -Name 'tip'
-        if (-not $rg -or -not $rt) {
-            Write-Host "[!] $(Split-Path $json -Leaf) 缺 handgrip / tip 组件，跳过" -ForegroundColor Yellow
+        if (-not $rt) {
+            Write-Host "[!] $(Split-Path $json -Leaf) 缺 tip 组件，跳过" -ForegroundColor Yellow
             continue
         }
 
@@ -304,83 +275,21 @@ else {
             }
             break
         }
-
-        $compIdx = -1
-        for ($i = 0; $i -lt $lines.Count; $i++) {
-            if ($lines[$i] -match '^\s*"components"\s*:\s*\{') { $compIdx = $i; break }
-        }
-        if ($compIdx -lt 0) {
-            Write-Host "[!] $(Split-Path $json -Leaf) 没有 components 块，跳过" -ForegroundColor Yellow
-            continue
-        }
-        $rg = Get-ComponentRange -Lines $lines.ToArray() -Name 'handgrip'
-        $rt = Get-ComponentRange -Lines $lines.ToArray() -Name 'tip'
-        $ins = New-Object System.Collections.Generic.List[string]
-        foreach ($a in $targets) {
-            $origin = '                "origin": [0.0, 0.0, 0.0],'
-            $rot = '                "rotate_xyz" : [0.0,0.0,0.0]'
-            if ($a.src) {
-                $src = $rg
-                if ($a.src -eq 'tip') { $src = $rt }
-                $o = Get-ComponentLocalLine -Lines $lines.ToArray() -From $src[0] -To $src[1] -Key 'origin'
-                $r = Get-ComponentLocalLine -Lines $lines.ToArray() -From $src[0] -To $src[1] -Key 'rotate_xyz'
-                if (-not $o -or -not $r) {
-                    Write-Host "[!] $(Split-Path $json -Leaf)：$($a.name) 取不到源组件值，跳过这一条" -ForegroundColor Yellow
-                    continue
-                }
-                $origin = $o
-                $rot = $r
-            }
-            $range = Get-ComponentRange -Lines $lines.ToArray() -Name $a.name
-            if (-not $range) {
-                $ins.Add('        "' + $a.name + '": {')
-                $ins.Add('            "component_local" : {')
-                $ins.Add($origin)
-                $ins.Add($rot)
-                $ins.Add('            }')
-                $ins.Add('        },')
-                $changes += $a.name
-                continue
-            }
-            $oi = Get-ComponentLocalIndex -Lines $lines.ToArray() -From $range[0] -To $range[1] -Key 'origin'
-            $ri = Get-ComponentLocalIndex -Lines $lines.ToArray() -From $range[0] -To $range[1] -Key 'rotate_xyz'
-            if ($oi -ge 0 -and $lines[$oi].Trim() -ne $origin.Trim()) {
-                $lines[$oi] = $origin
-                $changes += "$($a.name) 原点"
-            }
-            if ($ri -ge 0 -and $lines[$ri].Trim() -ne $rot.Trim()) {
-                $lines[$ri] = $rot
-                $changes += "$($a.name) 角度"
-            }
-        }
-        if ($ins.Count) { $lines.InsertRange($compIdx + 1, $ins) }
-        if (-not $changes.Count) {
-            Write-Host "[=] $($m.Name)：姿势组件与 tip 角度都已是对的，跳过"
-            continue
-        }
         $out = ($lines -join $nl)
         if ([System.IO.File]::ReadAllText($json) -eq $out) {
-            Write-Host "[=] $($m.Name)：已经补过，跳过"
+            Write-Host "[=] $($m.Name)：已经是目标内容，跳过"
             continue
         }
 
         [System.IO.File]::WriteAllText($json, $out, (New-Object System.Text.UTF8Encoding($bom)))
 
-        # 复核：grip / openxr_grip 必须是单位矩阵，且 JSON 仍然合法
+        # 复核：JSON 仍然合法、笔误已消失
         $chk = [System.IO.File]::ReadAllText($json)
-        $j = $null
-        try { $j = $chk | ConvertFrom-Json } catch { Die "$(Split-Path $json -Leaf) 写坏了（不再是合法 JSON）" }
-        foreach ($a in $targets) {
-            if (@($j.components.PSObject.Properties.Name) -notcontains $a.name) { Die "$(Split-Path $json -Leaf) 复核失败：缺 $($a.name)" }
-        }
+        try { $null = $chk | ConvertFrom-Json } catch { Die "$(Split-Path $json -Leaf) 写坏了（不再是合法 JSON）" }
         if ($chk.Contains($tipBad)) { Die "$(Split-Path $json -Leaf) 复核失败：tip 角度没改掉" }
-        foreach ($n in 'grip', 'openxr_grip') {
-            $cl2 = $j.components.$n.component_local
-            foreach ($v in @($cl2.origin) + @($cl2.rotate_xyz)) {
-                if ([math]::Abs([double]$v) -gt 1e-9) { Die "$(Split-Path $json -Leaf) 复核失败：$n 不是单位矩阵" }
-            }
-        }
-        Write-Host "[+] $($m.Name)：$($changes -join ' / ')（备份 $(Split-Path $jorig -Leaf)）" -ForegroundColor Green
+        $what = '回滚多余的姿势组件'
+        if ($changes.Count) { $what = $changes -join ' / ' }
+        Write-Host "[+] $($m.Name)：$what（备份 $(Split-Path $jorig -Leaf)）" -ForegroundColor Green
     }
 }
 
