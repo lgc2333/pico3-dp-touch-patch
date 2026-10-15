@@ -13,7 +13,7 @@
 
 > **DP 直连只有 Neo 3 Pro / Pro Eye 系列才有**（普通 Neo 3 没有 DP 口）。本仓库在 **Pro** 上实测；
 > Pro Eye 理论上同样适用（同为 PUI 5.9.9）但未测试；海外版 **Neo 3 Link** 也带 DP 口，同样未测试。
-> PC 侧补丁只针对**中国版 v1.2.10** 配套软件。
+> PC 侧补丁只针对**中国版 PC 端 1.2.11** 的 `driver_pico.dll`（md5 `9017439d…`）；头显端 app 是 1.2.10。
 
 ## 串流 app
 
@@ -21,7 +21,10 @@
 包名      com.picoxr.bstreamassistant
 DP 版     1.2.10（用户态更新，/data/app/...，flags 含 UPDATED_SYSTEM_APP）
 系统内置  /system/app/BStreamingAssistant（1.2.0）
+PC 端     Business Streaming 1.2.11（DP 驱动 md5 `9017439d…`）——「头显端 1.2.10 + PC 端 1.2.11」是本仓库实测组合
 ```
+
+> 头显端另有 **2.1.1**（非 DP 版，走 QUIC）；PC 端另有 **2.1.2**（Electron 版，驱动在 `openvr_driver\`，无 DP）。两代之间的预设/绑定差异见 `04`。
 
 > DP 版的版本由用户自己装（头显不会替它升级，只有可能被覆盖安装）；换回 1.2.10 跑
 > `src/windows/downgrade_streaming.bat`：`adb uninstall` 卸用户态更新（回落 1.2.0）→ `adb install -r -d` 装回。
@@ -99,7 +102,7 @@ bit2 ← AXTouchValue      bit3 ← BYTouchValue     bit4 ← rockerTouchValue
 bit5 ← triggerTouchValue bit7 ← thumbrestTouchValue
 ```
 
-⇒ 触摸齐全。
+⇒ 触摸齐全（驱动侧只读 bit2/3/5：`bit4`、`bit7` 读了也不用，摇杆 touch 走「偏离中位」；完整位表见 `04`）。
 
 **DP 路径**走 USB HID，驱动只读 16 位键值字，那份 32 位掩码到不了 PC
 （DP 驱动二进制里无任何 USB bulk / WinUSB 字符串）。

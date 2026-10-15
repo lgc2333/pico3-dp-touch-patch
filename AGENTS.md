@@ -1,4 +1,4 @@
-﻿# AGENTS.md
+# AGENTS.md
 
 PICO Neo 3 Pro（企业版）在「Business Streaming DP 直连」下补回手柄电容触摸：头显端 Frida hook + PC 驱动补丁。面向用户的说明在 `README.md`；完整逆向记录在 `docs/`。
 
@@ -13,7 +13,7 @@ src/
       pico_touch.ps1  一键：找头显 → 无线 adb → picohaxx 提权 → 推送 → 设备端注入
       push.ps1        只推文件：设备端三件套 + Termux 要用的（不提权、不注入）
       downgrade_streaming.ps1 头显端企业串流换版本：校验 sha256 的 APK → `adb uninstall` 卸用户态更新 → `adb install -r -d` → 读回 versionName/flags；PC 端安装包问过才下
-      patch_driver.ps1 驱动补丁（自己定位 DLL：注册表/OpenVR/问用户；未提权自己弹 UAC）
+      patch_driver.ps1 驱动补丁（自己定位 DLL：注册表/OpenVR/问用户；未提权自己弹 UAC）；顺手把 profile 里写成 `input/application_menu` 的斜杠补上（补完 menu 键才在 SteamVR 里生效）
       get_deps.ps1    从上游拉 frida-inject / picohaxx（并打 Neo 3 补丁）/ platform-tools（-PlatformTools）
     temp/             运行期缓存：依赖二进制、`.headset_ip`（整目录被 .gitignore 忽略）
   termux/             头显端（Termux）的 kit：装进 ~/pico_touch 即用，运行期不碰 /sdcard
@@ -72,7 +72,7 @@ adb shell 'ls -la /data/data/com.termux/files/home/pico_touch; ls -l /data/data/
 
 - 设备端命令**不要带双引号**：PowerShell 5.1 调 `adb.exe` 时，`\"` 的转义过不了 Windows 的 argv 层（设备端看到字面量 `\"`，`[ -n \"$p\" ]` 恒真）⇒ 用 `[ $p ]`、`pidof -s`，需要临时变量就在同一条命令里 `f=$(…)` 后判空。
 - **`$PREFIX/bin/dptouch` 是 symlink，标签必须等于 app 自己的**：root 建出来的条目默认只带 `u:object_r:app_data_file:s0`、少了 app 的类别（`s0:c126,c256,c512,c768`）⇒ app 连 `stat` 都被拒（`install.sh` 报 `cp: cannot stat '…/dptouch'`、敲 `dptouch` 直接 Permission denied）。实机踩过两次（2026-10-05），第二次的真凶是：**Android 的 toybox `chcon` 不支持 `--reference`**（`chcon: Unknown option reference=…`），而它在 `;` 链里静默失败、整条命令的退出码还被后面的 `restorecon` 覆盖成 0 ⇒ 必须显式喂上下文：宿主侧从 `ls -Zd $PREFIX/home` 取第一列，再 `chcon -h <ctx> $PREFIX/bin/dptouch`（设备端命令里别嵌引号，见上一条）。`Push-TermuxKit` 现在建完会 `ls -lZ` 反查、标签不对就 `[X]` 并让用户跑 `install.sh`（最稳还是让 app 自己建：`install.sh` 由 app 执行，标签天然正确）。`/sdcard` 那份必须是**完整** kit（含 `frida-inject`，头显侧不下依赖）。
-- `patch_driver` 前置：**SteamVR 必须没跑**（`tasklist | findstr vrserver`）；只想验补丁逻辑就用 `-Dll <临时目录里的 DLL 副本>`，别碰真文件。
+- `patch_driver` 前置：**SteamVR 必须没跑**（`tasklist | findstr vrserver`）；**Steam 客户端也可能映射着 `driver_pico.dll`**（`tasklist /m` 不一定列得出来，提权后 `Get-Process | %{ $_.Modules }` 看得到；实测 `steam.exe` 占着就写盘失败并抛「文件正由另一进程使用」）⇒ 遇到就请用户把 Steam 一起退掉再跑；只想验补丁逻辑就用 `-Dll <临时目录里的 DLL 副本>`，别碰真文件。
 - UAC 需要人点：跑 `patch_driver.bat` 前先告诉用户一声，别让它干等。
 - `picohaxx` 默认 `-adbd`：打完 adbd 补丁会 **restart adbd** ⇒ 所有 adb 连接当场断开，且新 adbd 读的是易失的 `service.adb.tcp.port`（`persist` 那个不算）⇒ 两边都得先 `adb tcpip 5555` 再提权：PC 侧带重连循环，Termux 侧用 `adb connect 127.0.0.1:5555` 轮询等它回来。它自己中止（`FATAL: SPINLOCK TIMEOUT`）时 adbd **压根没被动过**（既不掉线也不变 root）⇒ 两边都不干等、不重试（判据与两种表现见 `docs/notes/06-root.md`）。Termux 侧只有这一条路：提权也经 adbd（app 域直跑还要一个 `settings` 垫片，不值当）。
 - **Termux 那套包得是好的**：老包 `adb` 会 `CANNOT LINK EXECUTABLE`，旧的包环境也是「100% 必挂的 FATAL」的第一嫌疑（见 `docs/notes/06-root.md`）⇒ `dptouch` 发现 adb 用不了就自己 `pkg update` + `pkg upgrade`（非交互、配置文件冲突取新版）并装 `android-tools`；包正常时它只 `adb version` 验一下、不碰 `pkg`。
