@@ -1,0 +1,91 @@
+{
+  "source": {
+    "v2_sha256": "d851b7d1727b4f8daba769a60f4e8d44674857d962b5e6f40b32f7b7aed03418",
+    "v2_md5": "e6d408b2590042c3c7f796b694ffc404",
+    "cluster": [
+      "0x1800316d0",
+      "0x1800402c3"
+    ]
+  },
+  "dp": {
+    "base": 6442450944,
+    "md5": "9017439d560747678b4550fcf6726808"
+  },
+  "section": {
+    "rva": 700416,
+    "name": ".pitouch",
+    "declared_size": 65536
+  },
+  "payload_sha256": "6128cfaf56941699804473d1c5ed874ef7da51457d143e9839a71d5429b9b409",
+  "payload_size": 64648,
+  "symbols": {
+    "STR_IVRINPUT": "0x1800ba130",
+    "STR_POSE_RAW": "0x1800ba150",
+    "STR_INPUT_L": "0x1800ba160",
+    "STR_SKEL_L": "0x1800ba180",
+    "STR_INPUT_R": "0x1800ba1a0",
+    "STR_SKEL_R": "0x1800ba1c0",
+    "FP_ONE": "0x1800ba1d8",
+    "FP_MINUS_ONE": "0x1800ba1dc",
+    "FP_INV255": "0x1800ba1e0",
+    "DP_D_ONE": "0x1800ba1e8",
+    "DP_D_HALF": "0x1800ba1f0",
+    "DP_D_PI": "0x1800ba1f8",
+    "DP_D_Q0": "0x1800ba200",
+    "DP_D_Q1": "0x1800ba208",
+    "DP_D_Q2": "0x1800ba210",
+    "DP_D_Q3": "0x1800ba218",
+    "DP_D_Q4": "0x1800ba220",
+    "DP_D_Q5": "0x1800ba228",
+    "DP_D_Q6": "0x1800ba230",
+    "DP_D_Q7": "0x1800ba238",
+    "DP_D_Q8": "0x1800ba240",
+    "DP_D_Q9": "0x1800ba248",
+    "DP_D_Q10": "0x1800ba250",
+    "DP_D_Q11": "0x1800ba258",
+    "DP_D_Q12": "0x1800ba260",
+    "DP_D_Q13": "0x1800ba268",
+    "DP_D_Q14": "0x1800ba270",
+    "DP_D_Q15": "0x1800ba278",
+    "DP_D_Q16": "0x1800ba280",
+    "STATE": "0x1800ba290",
+    "SCRATCH": "0x1800ba2b0"
+  },
+  "stubs": {
+    "create": "0x1800ba8b0",
+    "update": "0x1800ba9a0",
+    "acosf": "0x1800baa80"
+  },
+  "patches": [
+    {
+      "rva": 97926,
+      "old": "e885d20000",
+      "new": "e8252a0a00",
+      "what": "component creator -> create skeleton component"
+    },
+    {
+      "rva": 103808,
+      "old": "4c8bdc5557",
+      "new": "e91b140a00",
+      "what": "input update -> drive the skeleton"
+    }
+  ],
+  "const_span": {
+    "0x18007ec20": [
+      "0x1800b9c00",
+      32
+    ],
+    "0x18007fcb0": [
+      "0x1800b9c20",
+      32
+    ],
+    "0x180080660": [
+      "0x1800b9c40",
+      32
+    ],
+    "0x1800821a0": [
+      "0x1800b9c60",
+      1232
+    ]
+  }
+}

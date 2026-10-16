@@ -1,10 +1,16 @@
 ﻿<#
-patch_driver.ps1 —— 给 PICO DP 驱动打补丁：让扳机 / 摇杆顶的电容触摸生效
+patch_driver.ps1 —— 给 PICO DP 驱动打补丁
 
-改动（零长度变化）：
+改动 A（零长度变化）：
     /input/trigger/touch   ← 键值字 bit5   (原: 扳机模拟量 != 0)
     /input/joystick/touch  ← 键值字 bit7   (原: 摇杆偏离中位)
     kTriggerTouch 调试打印 ← 恒跳过        (厂商遗留：拉扳机时以 ~200 Hz 刷 SteamVR Console；见 docs/notes/04-driver.md)
+
+改动 B（新增一个 PE 段 .pitouch，DLL 变大 ~63 KB）：
+    补上 DP 驱动缺的 pose/raw + skeleton 输出（Alyx 的手指动画走 skeleton，不是 capsense 绑定）。
+    `driver_patch\dp_skeleton_payload.bin` 是从 v2 驱动整段搬来的骨架代码（生成器 + 姿势表 + slerp +
+    每帧更新器）加上两段跳板；本脚本把它作为一个新段塞进 DLL，再把「建组件」和「输入更新」两处改成
+    跳进跳板。算法、位映射、为什么这么搬：见 docs/notes/04-driver.md。
 
 顺手修 profile：`resources\input\pico_controller_profile.json` 里的 `"input/application_menu"` 少一个 `/`，
     这条声明不生效 ⇒ menu 键在 SteamVR 里没反应；补成 `"/input/application_menu"`（实测补完 menu / system 键都正常）。
@@ -82,7 +88,7 @@ if (-not $Dll) {
     foreach ($r in $roots) { if ($Dll = Resolve-Dll $r) { break } }
 }
 while (-not $Dll) {
-    Write-Host '[*] 没找到 driver_pico.dll（注册表 / OpenVR / 常见安装位置都试过了）' -ForegroundColor Yellow
+    Write-Host '[!] 没找到 driver_pico.dll（注册表 / OpenVR / 常见安装位置都试过了）' -ForegroundColor Yellow
     Write-Host '    粘贴 driver_pico.dll 的路径，或 Business Streaming DP 的安装目录；直接回车退出'
     $in = Read-Host '> '
     if (-not $in) { Write-Host '[X] 已取消' -ForegroundColor Red; exit 1 }
@@ -100,11 +106,13 @@ function Die($m) { Write-Host "[X] $m" -ForegroundColor Red; exit 1 }
 # 提权窗口用 cmd /k 保住，跑完不关好读结果。
 $id = [Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not (New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host '[*] 需要管理员权限，正在请求提权（请在 UAC 弹窗点「是」）...'
+    Write-Host '[i] 需要管理员权限，正在请求提权（请在 UAC 弹窗点「是」）'
+    # 提权进程的起始目录是 System32：相对路径必须在这里先转成绝对路径，否则会退化成「自己找驱动」
+    $dllArg = if ($Dll) { [System.IO.Path]::GetFullPath($Dll) } else { '' }
     # Windows PowerShell 5.1 的 ArgumentList 不会自己加引号，带空格的路径必须手动包
     Start-Process cmd.exe -Verb RunAs -ArgumentList @(
         '/k', 'powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
-        '-File', ('"{0}"' -f $PSCommandPath), '-Dll', ('"{0}"' -f $Dll)
+        '-File', ('"{0}"' -f $PSCommandPath), '-Dll', ('"{0}"' -f $dllArg)
     )
     exit
 }
@@ -117,7 +125,7 @@ foreach ($p in 'vrserver', 'vrmonitor', 'vrdashboard', 'Business StreamingDP', '
 }
 if (-not (Test-Path $dll)) { Die "找不到 $dll" }
 
-# --- 备份 ---
+# --- 备份：`.orig` = 「动手前那一刻」的副本，不保证是厂商原件（全脚本统一这个约定，见 AGENTS.md）---
 if (-not (Test-Path $orig)) {
     Copy-Item $dll $orig -Force
     Write-Host "[+] 已备份 -> $orig"
@@ -126,7 +134,7 @@ else {
     Write-Host "[=] 备份已存在，跳过"
 }
 
-# --- 校验 md5 ---
+# --- 校验 md5（以 .orig 为准）---
 $md5 = (Get-FileHash $orig -Algorithm MD5).Hash.ToLower()
 if ($md5 -ne $md5Expect) {
     Write-Host "[!] 原始 DLL md5 = $md5（预期 $md5Expect）" -ForegroundColor Yellow
@@ -150,10 +158,10 @@ foreach ($p in $patch) {
     $n = $p.old.Length / 2
     $got = -join ($b[$p.off..($p.off + $n - 1)] | ForEach-Object { $_.ToString('X2') })
     if ($got -ne $p.old) {
-        Die ("偏移 0x{0:X} 原字节不符`n  期望 {1}`n  实际 {2}`n（DLL 版本可能已变，已中止，未做任何修改）" -f $p.off, $p.old, $got)
+        Die ("补丁点 0x{0:X} 不是原字节 —— 这个 driver_pico.dll 不是支持的那版（已中止，未写入）`n  期望 {1}`n  实际 {2}" -f $p.off, $p.old, $got)
     }
-    Write-Host ("[+] 0x{0:X} 校验通过  {1}" -f $p.off, $p.what)
 }
+Write-Host '[+] 驱动字节校验通过' -ForegroundColor Green
 
 # --- 写入 ---
 foreach ($p in $patch) {
@@ -162,8 +170,105 @@ foreach ($p in $patch) {
         $b[$p.off + $i] = [Convert]::ToByte($p.new.Substring($i * 2, 2), 16)
     }
 }
+
+# --- 改 B：骨架 / pose 支持（新增 .pitouch 段；见文件头与 docs/notes/04-driver.md）---
+# payload 里的绝对地址（段内 + DP 全局）在打包时已按 段 RVA = 原 SizeOfImage 算好，
+# 所以这里先卡死 SizeOfImage，落在别处就中止（版本变了别硬上）。
+function PeU16([byte[]]$Arr, [int]$Off) { return [BitConverter]::ToUInt16($Arr, $Off) }
+function PeU32([byte[]]$Arr, [int]$Off) { return [BitConverter]::ToUInt32($Arr, $Off) }
+function PePutU16([byte[]]$Arr, [int]$Off, [uint16]$Val) { [Array]::Copy([BitConverter]::GetBytes($Val), 0, $Arr, $Off, 2) }
+function PePutU32([byte[]]$Arr, [int]$Off, [uint32]$Val) { [Array]::Copy([BitConverter]::GetBytes($Val), 0, $Arr, $Off, 4) }
+function AlignUp([int]$Val, [int]$To) { return [int]([math]::Ceiling($Val / [double]$To) * $To) }
+function Sha256Of([byte[]]$Arr, [int]$Off, [int]$Len) {
+    $slice = New-Object byte[] $Len
+    [Array]::Copy($Arr, $Off, $slice, 0, $Len)
+    return (([System.Security.Cryptography.SHA256]::Create().ComputeHash($slice) | ForEach-Object { $_.ToString('x2') }) -join '')
+}
+# 段表里找 RVA 对应的文件偏移（找不到返回 -1）
+function FileOffsetOfRva([byte[]]$Arr, [int]$SecTab, [int]$NSec, [int]$Rva) {
+    for ($i = 0; $i -lt $NSec; $i++) {
+        $h = $SecTab + $i * 40
+        $sRva = [int](PeU32 $Arr ($h + 12))
+        $sSize = [int][Math]::Max((PeU32 $Arr ($h + 8)), (PeU32 $Arr ($h + 16)))
+        if ($Rva -ge $sRva -and $Rva -lt $sRva + $sSize) { return ([int](PeU32 $Arr ($h + 20)) + ($Rva - $sRva)) }
+    }
+    return -1
+}
+
+$plDir = Join-Path $PSScriptRoot 'driver_patch'
+$plBin = Join-Path $plDir 'dp_skeleton_payload.bin'
+$plMan = Join-Path $plDir 'dp_skeleton_payload.json'
+if (-not (Test-Path -LiteralPath $plBin) -or -not (Test-Path -LiteralPath $plMan)) {
+    Die "缺少骨架 payload：$plBin（从仓库里补回来，或按 docs/notes/artifacts/build_dp_skeleton_payload.py 重建）"
+}
+$man = Get-Content -LiteralPath $plMan -Raw | ConvertFrom-Json
+$payload = [System.IO.File]::ReadAllBytes($plBin)
+if ($payload.Length -ne [int]$man.payload_size) { Die '骨架 payload 长度与清单不符（文件被改过？）' }
+$plSha = (Get-FileHash -LiteralPath $plBin -Algorithm SHA256).Hash.ToLower()
+if ($plSha -ne $man.payload_sha256) { Die '骨架 payload 校验不过（文件被改过？）；用仓库里原版的那份，或按 docs/notes/artifacts/build_dp_skeleton_payload.py 重建' }
+
+function Build-DpSkeletonImage {
+    param([byte[]]$Bytes)
+
+    $peOff = PeU32 $Bytes 0x3C
+    if ((PeU32 $Bytes $peOff) -ne 0x00004550) { Die "不是合法 PE：$dll" }
+    $nSec = PeU16 $Bytes ($peOff + 6)
+    $optSize = PeU16 $Bytes ($peOff + 20)
+    $optOff = $peOff + 24
+    $secAlign = PeU32 $Bytes ($optOff + 32)
+    $fileAlign = PeU32 $Bytes ($optOff + 36)
+    $sizeOfImage = PeU32 $Bytes ($optOff + 56)
+    $sizeOfHeaders = PeU32 $Bytes ($optOff + 60)
+    $secTab = $optOff + $optSize
+
+    if ($nSec -ne 7 -or $sizeOfImage -ne [uint32]$man.section.rva) {
+        Die ("这个 driver_pico.dll 不是支持的那版（段数 = {0}、SizeOfImage = 0x{1:X}）；先把原版放回来再打（重装 DP 驱动 / 从安装包取）" -f $nSec, $sizeOfImage)
+    }
+    $slot = $secTab + $nSec * 40
+    if ($slot + 40 -gt $sizeOfHeaders) { Die '没法加段：PE 头里没有空的段表项（不是支持的那版？）' }
+    for ($i = 0; $i -lt 40; $i++) { if ($Bytes[$slot + $i] -ne 0) { Die '没法加段：PE 头里的段表项不是空的（不是支持的那版？）' } }
+
+    $vSize = AlignUp $payload.Length $secAlign
+    $rawPtr = AlignUp $Bytes.Length $fileAlign
+    $rawSize = AlignUp $payload.Length $fileAlign
+
+    # 段表项：名字 / VirtualSize / VirtualAddress / SizeOfRawData / PointerToRawData / relocs / linenums / Characteristics
+    # 0xE0000060 = CODE | INITIALIZED_DATA | MEM_EXECUTE | MEM_READ | MEM_WRITE（跳板里有每只手的句柄和暂存区）
+    $new = New-Object byte[] ($rawPtr + $rawSize)
+    [Array]::Copy($Bytes, 0, $new, 0, $Bytes.Length)
+    [Array]::Copy($payload, 0, $new, $rawPtr, $payload.Length)
+    $nameBytes = [System.Text.Encoding]::ASCII.GetBytes([string]$man.section.name)
+    [Array]::Copy($nameBytes, 0, $new, $slot, [Math]::Min(8, $nameBytes.Length))
+    PePutU32 -Arr $new -Off ($slot + 8) -Val ([uint32]$payload.Length)
+    PePutU32 -Arr $new -Off ($slot + 12) -Val ([uint32]$sizeOfImage)
+    PePutU32 -Arr $new -Off ($slot + 16) -Val ([uint32]$rawSize)
+    PePutU32 -Arr $new -Off ($slot + 20) -Val ([uint32]$rawPtr)
+    PePutU32 -Arr $new -Off ($slot + 36) -Val ([uint32]3758096480)  # 0xE0000060 = CODE|INITIALIZED_DATA|EXECUTE|READ|WRITE
+    PePutU16 -Arr $new -Off ($peOff + 6) -Val ([uint16]($nSec + 1))
+    PePutU32 -Arr $new -Off ($optOff + 56) -Val ([uint32]([int]$sizeOfImage + $vSize))
+
+    foreach ($p in $man.patches) {
+        $fileOff = FileOffsetOfRva -Arr $new -SecTab $secTab -NSec $nSec -Rva ([int]$p.rva)
+        if ($fileOff -lt 0) { Die ("段表里找不到 RVA 0x{0:X}（不是支持的那版？）" -f [int]$p.rva) }
+        $got = -join ($new[$fileOff..($fileOff + $p.old.Length / 2 - 1)] | ForEach-Object { $_.ToString('X2') })
+        if ($got -ne $p.old) {
+            Die ("挂钩点 0x{0:X} 的原字节不符 —— 这个 driver_pico.dll 不是支持的那版（已中止，未写入）`n  期望 {1}`n  实际 {2}" -f [int]$p.rva, $p.old, $got)
+        }
+        for ($i = 0; $i -lt $p.new.Length / 2; $i++) { $new[$fileOff + $i] = [Convert]::ToByte($p.new.Substring($i * 2, 2), 16) }
+    }
+    return $new
+}
+
+function DieVerify([string]$What) {
+    Die "复核失败：$What（把 $orig 覆盖回 $(Split-Path $dll -Leaf) 即可还原）"
+}
+
+$b = Build-DpSkeletonImage -Bytes $b
+
 [System.IO.File]::WriteAllBytes($dll, $b)
-Write-Host "[+] 已写入 $dll" -ForegroundColor Green
+Write-Host '[+] 驱动补丁已写入 driver_pico.dll：' -ForegroundColor Green
+Write-Host '      · 扳机 / 摇杆顶的电容触摸（顺带去掉厂商的调试打印）'
+Write-Host '      · 手柄骨架（手指搭在按键 / 扳机 / 摇杆顶上时，游戏里的手会跟着动）'
 
 # --- 复核 ---
 $c = [System.IO.File]::ReadAllBytes($dll)
@@ -172,8 +277,29 @@ foreach ($p in $patch) {
     $got = -join ($c[$p.off..($p.off + $n - 1)] | ForEach-Object { $_.ToString('X2') })
     if ($got -ne $p.new) { Die "复核失败：0x$($p.off.ToString('X')) = $got" }
 }
+$peOff = PeU32 $c 0x3C
+$optOff = $peOff + 24
+$optSize = PeU16 $c ($peOff + 20)
+$secTab = $optOff + $optSize
+$nSec = PeU16 $c ($peOff + 6)
+if ($nSec -ne 8) { DieVerify "段数 = $nSec" }
+$secAlign = PeU32 $c ($optOff + 32)
+$hdr = $secTab + 7 * 40
+$secRva = [int](PeU32 $c ($hdr + 12))
+$secRaw = [int](PeU32 $c ($hdr + 20))
+$secRawSize = [int](PeU32 $c ($hdr + 16))
+if ($secRva -ne [int]$man.section.rva) { DieVerify "新段 RVA = 0x$('{0:X}' -f $secRva)" }
+if ((PeU32 $c ($optOff + 56)) -ne [uint32]($secRva + (AlignUp $payload.Length $secAlign))) { DieVerify 'SizeOfImage 不对' }
+if ((Sha256Of -Arr $c -Off $secRaw -Len $payload.Length) -ne $man.payload_sha256) { DieVerify '段里的骨架代码和 payload 对不上' }
+if ($secRaw + $secRawSize -gt $c.Length) { DieVerify '段超出文件' }
+foreach ($p in $man.patches) {
+    $fileOff = FileOffsetOfRva -Arr $c -SecTab $secTab -NSec $nSec -Rva ([int]$p.rva)
+    if ($fileOff -lt 0) { DieVerify '找不到挂钩点' }
+    $got = -join ($c[$fileOff..($fileOff + $p.new.Length / 2 - 1)] | ForEach-Object { $_.ToString('X2') })
+    if ($got -ne $p.new) { DieVerify "挂钩点 0x$('{0:X}' -f [int]$p.rva) 不对" }
+}
 Write-Host '[+] 复核通过。重启 SteamVR 后生效。' -ForegroundColor Green
-Write-Host '[i] 还原：把同名 .orig 覆盖回去（driver_pico.dll / profile / rendermodels\*.json 三处都有）。'
+Write-Host '[i] 还原：把同名 .orig 覆盖回去（driver_pico.dll / profile / rendermodels\*.json 都有）。'
 
 # --- 顺手修 profile 里的 application_menu 笔误（见文件头；纯 JSON 文本，DLL 不读它）---
 $prof = Join-Path (Split-Path (Split-Path (Split-Path $dll -Parent) -Parent) -Parent) 'resources\input\pico_controller_profile.json'
