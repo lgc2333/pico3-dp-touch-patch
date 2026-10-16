@@ -37,7 +37,7 @@ function Get-AdbPath {
     # 哪里都没有：让 get_deps.ps1 按需拉一份到 temp/platform-tools（md5 逐字节校验，见该脚本）
     $cached = Join-Path (Get-RepoPaths -ScriptDir $PicoUtilsDir).Cache 'platform-tools\adb.exe'
     if (-not (Test-Path $cached)) {
-        Write-Host '[i] 本机没装 adb，自动下载 platform-tools 到缓存...'
+        Write-Host '[i] 本机没装 adb，先拉一份 platform-tools…'
         & (Join-Path $PicoUtilsDir 'get_deps.ps1') -PlatformTools
     }
     if (-not (Test-Path $cached)) { Write-Host '[X] adb 下载失败，请手动装 platform-tools 或用 -Adb <路径> 指定' -ForegroundColor Red; exit 1 }
@@ -49,7 +49,7 @@ function Ensure-Deps {
     New-Item -ItemType Directory -Force $Cache | Out-Null
     foreach ($f in 'frida-inject', 'picohaxx.neo3.bin') {
         if (-not (Test-Path (Join-Path $Cache $f))) {
-            Write-Host "[*] 缺少 $f，运行 get_deps.ps1 自动拉取..." -ForegroundColor Yellow
+            Write-Host "[i] 缺 $f，正在拉依赖…"
             & (Join-Path $PicoUtilsDir 'get_deps.ps1')
             break
         }
@@ -60,7 +60,7 @@ function Get-RemoteFile {
     # 单 URL 下载到 $Out；curl.exe（Win10 自带）优先，回退 Invoke-WebRequest；返回 $true/$false
     # 多 URL 的调用方（get_deps.ps1）自己套一层循环
     param([string]$Url, [string]$Out)
-    Write-Host "[*] 下载 $Url"
+    Write-Host "[i] 下载 $(Split-Path $Out -Leaf)…"
     try {
         if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
             & curl.exe -fL --retry 3 --connect-timeout 15 -o $Out $Url
@@ -72,7 +72,7 @@ function Get-RemoteFile {
             if (Test-Path $Out) { return $true }
         }
     }
-    catch { Write-Host "[!] 失败：$($_.Exception.Message)" -ForegroundColor Yellow }
+    catch { Write-Host "[!] 下载失败：$($_.Exception.Message)" -ForegroundColor Yellow }
     return $false
 }
 
@@ -105,12 +105,12 @@ function Connect-AdbTarget {
     $wireless = $Target -match '^\d+\.\d+\.\d+\.\d+:\d+$'
     $tried = $false
     if ((Get-AdbDeviceState -Adb $Adb -Target $Target) -ne 'device') {
-        Write-Host "[*] adb connect $Target ..."
+        Write-Host "[i] 连接 $Target…"
         & $Adb connect $Target | Out-Null; Start-Sleep -Seconds 2; $tried = $true
     }
     if ((Get-AdbDeviceState -Adb $Adb -Target $Target) -ne 'device' -and
         $Serial -and (Get-AdbDeviceState -Adb $Adb -Target $Serial) -eq 'device') {
-        Write-Host '[*] 用 USB 打开 tcpip 5555 ...'
+        Write-Host '[i] 通过 USB 打开 TCP 端口 5555…'
         & $Adb -s $Serial tcpip 5555 | Out-Null; Start-Sleep -Seconds 5
         & $Adb connect $Target | Out-Null; Start-Sleep -Seconds 2
     }
@@ -149,7 +149,7 @@ function Get-WirelessCandidates {
         $seen[$ip] = $true
         $all += $ip
     }
-    Write-Host "[*] 扫本机私有网段里开着 5555 的邻居（$($all.Count) 个候选）..."
+    Write-Host "[i] 在网上找头显（扫描 $($all.Count) 个候选）…"
     foreach ($ip in $all) {
         if (Test-TcpOpen -Server $ip -Port 5555 -TimeoutMs 300) { $cand += "$ip`:5555" }
     }
@@ -205,7 +205,7 @@ function Select-Headset {
             $pick = $devs[$n - 1].Serial
             break
         }
-        Write-Host "[+] 认定头显 = $pick" -ForegroundColor Green
+        Write-Host "[+] 头显：$pick" -ForegroundColor Green
 
         if ($pick -match ':') { return @{ Target = $pick; Serial = '' } }  # 已经是无线目标
 
@@ -256,7 +256,7 @@ function Select-Headset {
             $b = "$(Read-Host '它就是你的头显吗？（回车=是 / n=不是，退出）')".Trim()
             if ($b -match '^(n|no|否|q|quit|取消)$') { return $null }
             if ($b -match '^(y|yes|是)?$') { $chosen = $ok[0]; break }
-            Write-Host '[X] 直接回车表示「是」，输入 n 表示「不是」' -ForegroundColor Red
+            Write-Host '[!] 直接回车表示「是」，输入 n 表示「不是」' -ForegroundColor Yellow
         }
     }
     else {

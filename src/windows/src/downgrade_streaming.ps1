@@ -76,7 +76,7 @@ function Get-VerifiedFile {
         Write-Host "    实得 $got"
         exit 1
     }
-    Write-Host "[+] 已下载并校验：$out（$((Get-Item $out).Length) 字节）" -ForegroundColor Green
+    Write-Host "[+] 已下载并校验：$(Split-Path $out -Leaf)" -ForegroundColor Green
     $out
 }
 
@@ -93,10 +93,10 @@ function Get-BStreamInfo {
     }
 }
 
-Write-Host '=== 1/4 准备头显端安装包 ===' -ForegroundColor Cyan
+Write-Host '[i] 第 1/4 步：准备头显端安装包'
 $apk = Get-VerifiedFile -Spec $Hs
 
-Write-Host '=== 2/4 认头显 ===' -ForegroundColor Cyan
+Write-Host '[i] 第 2/4 步：认头显'
 $sel = Select-Headset -Adb $Adb -Serial $Serial -IpFile (Join-Path $P.Cache '.headset_ip')
 if (-not $sel) { Write-Host '[X] 没找到头显（已取消）' -ForegroundColor Red; exit 1 }
 $D = $sel.Target
@@ -105,7 +105,7 @@ $cur = Get-BStreamInfo -Adb $Adb -Target $D
 if ($cur) { Write-Host "[i] 现在是 $($cur.Ver)（versionCode $($cur.Code)）" }
 else { Write-Host '[!] 读不到当前版本（app 没装？）' -ForegroundColor Yellow }
 
-Write-Host '=== 3/4 卸载更新 + 装目标版本 ===' -ForegroundColor Cyan
+Write-Host '[i] 第 3/4 步：卸载更新 + 装目标版本'
 if ((((& $Adb -s $D shell "pidof $($Hs.Pkg)") -join '')).Trim()) {
     Write-Host '[!] 头显上企业串流正在跑，下面这步会把它结束掉' -ForegroundColor Yellow
 }
@@ -117,7 +117,7 @@ Write-Host "[i] 往 $D 装 $($Hs.Ver)（无线 adb 下十几秒到一分钟，�
 & $Adb -s $D install -r -d $apk
 if ($LASTEXITCODE -ne 0) { Write-Host "[X] adb install 失败（退出码 $LASTEXITCODE）" -ForegroundColor Red; exit 1 }
 
-Write-Host '=== 4/4 校验 ===' -ForegroundColor Cyan
+Write-Host '[i] 第 4/4 步：校验'
 $new = Get-BStreamInfo -Adb $Adb -Target $D
 if (-not $new) { Write-Host '[X] 装完读不到版本，头显里自己看一眼企业串流' -ForegroundColor Red; exit 1 }
 Write-Host "[i] 装完是 $($new.Ver)（versionCode $($new.Code)）"

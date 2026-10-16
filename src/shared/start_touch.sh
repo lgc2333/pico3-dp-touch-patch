@@ -10,7 +10,7 @@ LOG=/data/local/tmp/start_touch.log   # 自述也写一份到这里（0666）：
 
 PID=$(pidof pxrstreamingservice)
 if [ -z "$PID" ]; then
-    echo "pxrstreamingservice 未运行"
+    echo "[X] pxrstreamingservice 没在跑 —— 让头显先进 DP 串流再重跑"
     exit 1
 fi
 
@@ -20,14 +20,14 @@ say() { echo "$@"; echo "$@" >> "$LOG" 2>/dev/null || true; }
 injected() { grep -q 'frida-agent' /proc/"$PID"/maps 2>/dev/null; }
 
 # 0 = adbd 的后代（正常）；2 = app 的过滤器（Termux 直跑）⇒ 注入器必然被 SIGSYS 杀
-say "[i] 本线路 Seccomp=$(grep -E '^Seccomp:' /proc/self/status | tr -d '\t ' | cut -d: -f2)"
+say "[i] 运行环境 Seccomp=$(grep -E '^Seccomp:' /proc/self/status | tr -d '\t ' | cut -d: -f2)（0 = adbd，正常）"
 
 if injected; then
-    say "已注入（pid=$PID），跳过"
+    say "[=] 已经注入过（pid=$PID），跳过"
     exit 0
 fi
 if [ ! -x "$INJ" ] || [ ! -f "$JS" ]; then
-    say "[X] 缺少 $INJ 或 $JS"
+    say "[X] 缺少 $INJ 或 $JS —— 在 PC 上重跑 push.bat 把文件推过来"
     exit 1
 fi
 
@@ -42,7 +42,7 @@ say "[i] 注入器已启动，等 agent 挂上……"
 i=0
 while [ "$i" -lt 60 ]; do
     if injected; then
-        say "已注入 pid=$PID"
+        say "[+] 已注入（pid=$PID）"
         exit 0
     fi
     kill -0 $INJPID 2>/dev/null || break

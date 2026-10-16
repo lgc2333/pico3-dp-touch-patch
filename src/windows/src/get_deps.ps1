@@ -70,7 +70,7 @@ function Expand-Xz([string]$xz, [string]$out) {
     if ($sevenz) {
         & $sevenz x -y -aoa "-o$out" "$xz" *> $null
         if ($LASTEXITCODE -eq 0) { return $true }
-        Write-Host '[!] 7z 解压失败，尝试 tar…' -ForegroundColor Yellow
+        Write-Host '[!] 没有 7z，改用 tar 解压…' -ForegroundColor Yellow
     }
     try {
         & tar -xf $xz -C $out 2>$null
@@ -79,7 +79,7 @@ function Expand-Xz([string]$xz, [string]$out) {
     catch {
         Write-Verbose "tar 起不来（$($_.Exception.Message)），换 xz 解压"
     }
-    Write-Host '[!] tar 解压失败，尝试 xz…' -ForegroundColor Yellow
+    Write-Host '[!] tar 也不行，改用 xz 解压…' -ForegroundColor Yellow
     $xzc = Get-ExePath xz
     if ($xzc) {
         & $xzc -dc "$xz" > (Join-Path $out $InjName)
@@ -103,7 +103,7 @@ if ($Force -or -not (Test-Path $Inj)) {
     $raw = Join-Path $out $InjName
     if (-not (Test-Path $raw)) { Write-Host "[X] 解压后找不到 $InjName" -ForegroundColor Red; exit 1 }
     Move-Item -Force $raw $Inj
-    Write-Host "[+] frida-inject -> $Inj"
+    Write-Host "[+] frida-inject 已就位（$Inj）"
 }
 
 # --- picohaxx + Neo 3 补丁 ---
@@ -125,7 +125,7 @@ if ($Force -or -not (Test-Path $Haxx)) {
         Write-Host "[X] 固件串不符：'$fw'（预期 '5.9.9-202408300028'）；已中止。" -ForegroundColor Red; exit 1
     }
     if ($bytes[0x164ef9] -ne 0xB0) {
-        Write-Host ("[X] 0x164ef9 = 0x{0:X2}（预期 0xB0）；已中止。" -f $bytes[0x164ef9]) -ForegroundColor Red; exit 1
+        Write-Host ("[X] 补丁点 0x164ef9 = 0x{0:X2}（预期 0xB0）—— 上游换了构建，补丁偏移要重新确认（见 docs/notes/06-root.md）；已中止。" -f $bytes[0x164ef9]) -ForegroundColor Red; exit 1
     }
 
     [byte[]]$new = [System.Text.Encoding]::ASCII.GetBytes('202409100313') + [byte[]](0, 0, 0, 0, 0, 0)
@@ -171,12 +171,11 @@ if ($PlatformTools -and ($Force -or -not (Test-Path $PtExe))) {
         Copy-Item $src (Join-Path $PtDir $f)
     }
     Remove-Item -Force $zip -ErrorAction SilentlyContinue
-    Write-Host "[+] platform-tools $PtVer -> $PtDir"
+    Write-Host "[+] platform-tools $PtVer 已就位（$PtDir）"
 }
 
 Write-Host ''
 Write-Host '[+] 依赖就绪：' -ForegroundColor Green
-$items = @($Inj, $Haxx)
-if (Test-Path $PtExe) { $items += $PtExe }
-Get-Item $items | ForEach-Object { Write-Host ("    {0}  ({1:N0} B)" -f $_.FullName, $_.Length) }
-if (Test-Path $PtExe) { Write-Host ("    {0}" -f ((& $PtExe version | Select-Object -First 1))) }
+Write-Host '      · frida-inject'
+Write-Host '      · picohaxx.neo3.bin（Neo 3 补丁已应用）'
+if (Test-Path $PtExe) { Write-Host ("      · platform-tools（{0}）" -f ((& $PtExe version | Select-Object -First 1))) }

@@ -41,8 +41,8 @@ kit() {   # kit <名字>：在 kit 里找（$HERE 或 $HERE/temp/）
 }
 
 run() {
-    echo "### dptouch.sh 开始 $TS"
-    echo "=== 1/4 准备 adb ==="
+    echo "[i] dptouch 开始（$TS）"
+    echo "[i] 第 1/4 步：准备 adb"
     # 本机 adbd 占着 127.0.0.1:5037 ⇒ 客户端的 server 换 5038；写进 ~/.bashrc（幂等），新开的 Termux 会话也生效
     RC=$HOME/.bashrc
     grep -qs 'ANDROID_ADB_SERVER_PORT' "$RC" 2>/dev/null || {
@@ -55,7 +55,7 @@ run() {
     if ! command -v adb >/dev/null 2>&1 || ! adb version >/dev/null 2>&1; then
         if command -v pkg >/dev/null 2>&1; then
             echo '[!] adb 不在或跑不起来（CANNOT LINK EXECUTABLE = 包旧了/装残了）⇒ 先更新系统包再装它'
-            echo '[=] pkg update / upgrade / install android-tools（可能几分钟，输出全量跟着看）'
+            echo '[i] pkg update / upgrade / install android-tools（可能几分钟，输出全量跟着看）'
             export DEBIAN_FRONTEND=noninteractive
             # 别把 pkg 的输出吞掉（静默几分钟用户会以为卡死），也别收窄它
             pkg update -y && pkg upgrade -y -o Dpkg::Options::=--force-confnew && pkg install -y android-tools || true
@@ -66,7 +66,7 @@ run() {
             return 1
         fi
     fi
-    echo "[+] $(command -v adb)（$(adb version 2>/dev/null | head -1)）"
+    echo "[+] adb 可用：$(adb version 2>/dev/null | head -1)"
     adb start-server >/dev/null 2>&1 || true
     if ! up 6; then
         echo "[X] 连不上本机 adbd。adb devices："
@@ -74,10 +74,9 @@ run() {
         echo "    ⇒ 头显「设置 → 开发者选项」里打开 adb / 无线调试（adbd 要在 $PORT 上监听）？"
         return 1
     fi
-    echo "[+] $DEV"
-    echo "[i] uid=$(A shell id -u 2>/dev/null | tr -d '\r')"
+    echo "[+] 头显：$DEV"
 
-    echo "=== 2/4 推设备端四件套 ==="
+    echo "[i] 第 2/4 步：推设备端文件"
     for p in picohaxx:picohaxx.neo3.bin frida-inject:frida-inject hook.js:hook.js start_touch.sh:start_touch.sh; do
         dst=${p%%:*}
         src=${p#*:}
@@ -86,18 +85,16 @@ run() {
         A push "$L" "$TMP/$dst" >/dev/null 2>&1 || { echo "[X] 推 $dst 失败"; return 1; }
     done
     A shell "chmod 755 $TMP/picohaxx $TMP/frida-inject $TMP/start_touch.sh; chmod 644 $TMP/hook.js" >/dev/null 2>&1
-    echo "[+] $TMP 就绪"
+    echo "[+] 设备端文件已就位（$TMP）"
 
-    echo "=== 3/4 提权：把 adbd 换成 root ==="
+    echo "[i] 第 3/4 步：提权（把 adbd 换成 root）"
     if [ "$(A shell 'id -u' 2>/dev/null | tr -d '\r')" = "0" ]; then
         echo "[=] adbd 已经是 root，跳过提权"
     else
-        echo "[i] adb tcpip $PORT"   # 让重启后的 adbd 仍监听 $PORT（picohaxx 只设 persist.*，adbd 重启时不读那个）
         A tcpip "$PORT" >/dev/null 2>&1 || true
         up 6 || { echo '[X] tcpip 之后设备没回来'; return 1; }
-        echo '[i] 2 秒后开始提权（过程约 50 秒）'
+        echo '[i] 开始提权（约 50 秒；下面是 exploit 的原始输出）'
         sleep 2   # picohaxx 一开刷日志就会把上面的提示顶出屏幕，停 2 秒让人看清
-        echo '[*] 开始提权'  # 它打完 adbd 补丁会 kill adbd 并自己退出 ⇒ 本次连接必断，所以不等它，输出跟着看
         A shell "rm -f $HLOG" >/dev/null 2>&1 || true
         A shell "cd $TMP && ./picohaxx -noftpd -- /system/bin/id > $HLOG 2>&1 < /dev/null" >/dev/null 2>&1 &
         HAXPID=$!
@@ -127,7 +124,7 @@ run() {
         echo "[+] adbd 已是 root"
     fi
 
-    echo "=== 4/4 注入（由 adbd 跑） ==="
+    echo "[i] 第 4/4 步：注入（由 adbd 跑）"
     # 远端输出写进 $RLOG、末尾追加 [[RC]]=<rc>；**不**等 adb 客户端（常驻子进程攥着连接不放）⇒ 轮询日志拿结果
     A shell "rm -f $RLOG" >/dev/null 2>&1 || true
     A shell "cd $TMP && { ./start_touch.sh; echo \"[[RC]]=\$?\"; } > $RLOG 2>&1 < /dev/null" >/dev/null 2>&1 &
@@ -176,5 +173,5 @@ sleep 0.2
 [ -n "$TAILPID" ] && kill $TAILPID 2>/dev/null || true
 SHARE=/sdcard/Download/pico_touch/logs   # 镜像一份到 /sdcard：不 root 的 adb / PC 也读得到（见 AGENTS 设备端）
 mkdir -p "$SHARE" 2>/dev/null && cp -f "$LOG" "$SHARE/" 2>/dev/null || true
-echo "### 结束 $TS rc=$RC —— 日志：$LOG"
+echo "[i] dptouch 结束（rc=$RC；日志：$LOG）"
 exit $RC
