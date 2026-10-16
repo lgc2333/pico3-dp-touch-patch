@@ -51,7 +51,7 @@ profile 按 `controllertype` 二选一（`GetPrivateProfileIntW("PICO","controll
 - SteamVR 侧另有一份兜底：`SteamVR\resources\input\default_pico_controller_profile.json`（`"is_stub": true`，`input_source` 与厂商 DP 那份**逐字一致**，连 `input/application_menu` 的笔误都照抄；另带 `simulation_settings.legacy_buttons=[0,1,2,7,32,33,34]`）与 `default_pico_controller_remapping.json`（khr_generic / `oculus_touch` / `knuckles` / `hand_interaction_ext` / `vive_controller` / `khr_simple` 的 simulate + autoremapping）。
 - **「模拟另一只手柄」还是「翻译绑定」由驱动 profile 的 `remapping` 字段决定，不是 SteamVR 那份 stub 决定**（实测 2026-10-16，用户实机）：换上 v2 的 neo3 profile（**没有** `remapping` 字段）后，Alyx 的绑定页显示「有效的控制器 = **Pico Controller**」+「此绑定已自动重映射至您的控制器」，`vrserver.txt` 成片 `[Remapping] ... oculus_touch to ... pico_controller` ⇒ 走的是**兼容翻译**，不是模拟 Oculus Touch。厂商的 `pico_controller_remapping.json` 头一条 layout 恰好是 `oculus_touch` + `simulate_controller_type: true`，但**只有那份没人加载的通用 `pico_controller_profile.json` 引用它**，neo3 profile（DP 与 v2 都实际加载它）不引用。
 - ⚠️ 因此**别随手挂上那份 remapping**：它的 oculus_touch autoremappings 只映射 grip / trigger / joystick / x / y / a / b（还有两处 `/user/hand/rgiht/...` 拼错、等于无效），**没有任何 touch 子输入** ⇒ 改成"模拟 Oculus Touch"很可能会把本项目刚补回来的触摸又丢掉。
-- **Alyx 的手指动画走 `skeleton` 输入，不是 capsense 绑定**（实测它的 `bindings_touch.json`：`/user/hand/*/input/skeleton/*` → `/actions/default/in/HandSkeletonLeft|Right`，整份里**没有**任何 `touch` 条目；这里的 Touch 指 Oculus Touch 手柄）⇒ 本项目补的 capsense 要变成手指动作，得靠 SteamVR 自己**合成骨架**。VRChat 那套才是显式 `touch → gesture_activator_thumb/index/grip`，而 SteamVR 的自动重映射**不丢** touch（实测 `SteamVR\config\openxr\auto-remapping_{from,to}Binding.json` 只差一句 description）。
+- **Alyx 的手指动画走 `skeleton` 输入，不是 capsense 绑定**（实测它的 `bindings_touch.json`：`/user/hand/*/input/skeleton/*` → `/actions/default/in/HandSkeletonLeft|Right`，整份里**没有**任何 `touch` 条目；这里的 Touch 指 Oculus Touch 手柄）⇒ 本项目补的 capsense 要变成手指动作，得靠 SteamVR 自己**合成骨架**（而 DP 驱动没实现 skeleton ⇒ 骨架输出建不出来，见文末「待办」）。VRChat 那套才是显式 `touch → gesture_activator_thumb/index/grip`，而 SteamVR 的自动重映射**不丢** touch（实测 `SteamVR\config\openxr\auto-remapping_{from,to}Binding.json` 只差一句 description）。
 - SteamVR 的 stub profile 另有一整块 `simulation_settings`（`hmd_profile: rift`、模型号、`tracking_system_name: oculus`、`manufacturer_name: Oculus`、`legacy_buttons/axis`），厂商 profile 没有这块 —— 推测「模拟成 Oculus Touch 后 SteamVR 才会合成骨架/手指」就靠它，**未实测**。
 - **profile 里没声明的输入，`CreateBooleanComponent` 静默失败、句柄留 0**（驱动从不检查返回值）
 - `triggertest`（`RVRPlugin.ini` 的 `[PICO] triggertest=202`）是**死配置**：全二进制只有 1 处写、0 处读
@@ -71,6 +71,58 @@ profile 按 `controllertype` 二选一（`GetPrivateProfileIntW("PICO","controll
 4. 搬之前一定留全量备份，并记下"哪些是新增文件"—— 只按"备份里没有就删"还原会误删厂商原有文件（实测踩过：`controller_left.svg` / `controller_right.svg` / `headset.svg` 被一起删了，靠打预设前的整体副本才救回来）。
 
 - SteamVR 按应用缓存绑定（`%LOCALAPPDATA%\openvr\`）：改完没变化时先在绑定界面点「恢复默认绑定」，或清掉该应用的缓存绑定。
+
+## 渲染模型层：模型缺 `grip` 挂点 ⇒ 游戏里手柄错位 ≈9.7cm（实测 2026-10-16）
+
+`controllertype=3` 时驱动报 PICO 身份 + `{pico}/rendermodels/pico_neo3_*controller`，但 SteamVR 的兼容层会**按 app** 把手柄模拟成 Oculus Touch —— 身份是 Touch / Quest 2 的约定：
+
+```text
+vrclient_hlvr.txt    [Input] Loaded input profile for simulated controller type: oculus_touch
+vrclient_hlvr.txt    [Simulation] Setting device 1/2 with override properties for oculus_touch
+RendermodelManager: Both grip and aim are at 0, couldn't guess which direction is outwards for poke/pinch creation.
+```
+
+- **SteamVR 菜单（compositor）不走这一层**，所以只有游戏里错位：造型不变、位置偏。用户实测：现实里两个追踪环对顶，游戏里会互相穿插（虚拟环之间差 ≈9cm）；Alyx / VRChat / TheLab / steamtours 都触发。
+- pose 源的值 = **设备位姿 ⊗ 模型里同名 component**（profile 的 `input_source` 名与模型 component 一一对应：`raw / base / handgrip / tip / openxr_aim`）。模拟成 oculus_touch 后 app 还会找 **`/pose/grip`**，而 PICO 的模型**只有 `handgrip`、没有 `grip`** ⇒ app 用 `grip` 做反向补偿时补偿值成 0，整个模型被顶向环那一侧 **9.7cm**（= `handgrip` 的数值，与实测 ≈9cm 同量级、方向也吻合）。
+- Valve 的 `oculus_quest2_controller_*` 里 **`grip` 与 `handgrip` 数值完全相同**（`[0, 0.003, 0.097]`）—— PICO 只是漏了这个别名。
+- **修法（已进 `patch_driver.ps1`，待实机验证）**：给 `pico_*_{left,right}controller.json` 补 `grip` / `openxr_grip`（取 `handgrip`）与 `aim` / `openxr_aim`（取 `tip`，`aim` 也是 SteamVR 那句警告点名要的）；另补厂商漏发的 `pico_hmd_profile.json`（见下节）。
+- 早前那次「补 `grip`/`aim` 无效」是**假阴性**：那次 `grip` 写的是单位矩阵，补偿值仍是 0。
+
+### 已排除（都实测过，别再走）
+
+- **换模型名**：给 profile 加 `remapping` 行 + 生成 `pico_controller_remapping.json`（关掉 `simulate_render_model`）只改 app 请求的**模型名字**（`oculus_quest2_*` → `{pico}/...`），**几何完全不变**（两条路读的都是同一个 `pico_neo3_*controller.json`）⇒ 实机无任何变化；它还会和 `compatibility_mode_controller_type` 互斥（vrserver 明确警告并忽略后者）。已撤。
+- **`component_local` 不参与静态几何**：拿 Valve 自己的 `oculus_quest2_controller_left` 当对照——各零件按 `origin + rotate_xyz` 变换后，与它自带的合并网格 `oculus_quest2_controller_left.obj` 差 **11–56mm**；**原样用顶点**则差 **0.0mm** ⇒ SteamVR 画静态几何时不叠加 `component_local`（它只是组件位姿 / 动画枢轴）。所以 PICO `body` 里那个 `[0, 0.003, 0.097]` 对造型是**惰性**的，不是错位来源。
+- **改渲染分辨率 / 换 Steam 客户端 UI**：与错位无关（当时看错了）。
+
+### 备用候选：把几何搬到 Oculus 约定
+
+量各家合并网格的 z 范围（原点在模型里的位置就是约定）：
+
+| 模型                                  | 几何 z 范围        | 约定                               |
+| ------------------------------------- | ------------------ | ---------------------------------- |
+| Valve `oculus_quest2_controller_*`    | `[+0.020, +0.150]` | 原点在模型尖端**前** 2cm（Oculus） |
+| Valve `oculus_cv1` / `oculus_quest_*` | `[+0.02, +0.14]`   | 同上                               |
+| Valve `vr_controller_vive_1_5`        | `[-0.046, +0.174]` | 原点在身体**内部**（Vive）         |
+| PICO `pico_neo3_*controller`          | `[-0.049, +0.126]` | 同上（Vive 式）                    |
+
+若 `grip` 修法不生效，下一个候选是把 PICO 几何整体 **+0.069m** 平移（把尖端从 −0.049 对到 +0.020，即 Oculus 约定）。**别和 `grip` 修法同时做**：两者方向相同、会互相抵消。
+
+### 其它实测补充
+
+- DP 这份的 `tip.rotate_xyz` 是 `[-21.282,3.0,0.0]`，而 **UW / v2 / DP 自己的 neo2 都是 `-1.282`** ⇒ DP 独有、疑似笔误；以 `tip` 为准的游戏会指向偏约 22°。
+- `pico_neo2_*_oculus.json` / `_vive.json` 与本体只差空白（`_vive` 那对换了 trackpad 语义），但 neo3 目录里没有这两份、DLL 里也没有这些后缀 ⇒ 没人引用。
+- v2（`%LOCALAPPDATA%\PicoNeo2NvencCompat`）与 DP 逐文件比对：**OBJ 逐字节相同**；JSON 只差 `motion` 块（摇杆中心/旋转范围、`sys_button` 与 `button` 的 `pressed_path` 互换）。DP 少发的东西：`pico_hmd_profile.json`、`pico_neo3_controller_profile.json`（Neo3 专用，多一份应用 `default_bindings`）、8 份应用绑定、`pico_controller2_remapping.json`、`_joystick` / `_trackpad` 模型变体。
+- 姿势源侧：DP 驱动 DLL 里 **`/pose/*` 与 `/skeleton/*` 一个都没有**（UW / v2 有 `/pose/raw` + `/skeleton/hand/{left,right}`）⇒ Alyx 的手指动画拿不到，见「待办」。
+
+### 头显 profile 漏发（实测 2026-10-16）
+
+```text
+vrserver.txt  [Error] [Controller Setup] Failed to load input profile for device:
+              Unable to read device input profile from {pico}/input/pico_hmd_profile.json
+```
+
+- DP 驱动每次启动都在找 `{pico}/input/pico_hmd_profile.json`，但包里没有 ⇒ 头显 profile 加载失败、回落到 SteamVR 的 `default_pico_controller_profile.json`（stub）⇒ 那份 stub 的 `simulation_settings` 生效：`hmd_profile: rift`、`tracking_system_name: oculus`、`manufacturer_name: Oculus`、型号串成 `Pico Phoenix Controller`（PICO 4 的）。日志可见 `[Input] Loaded input profile for simulated hmd type: rift` + `[Simulation] Setting device 0 with override properties for rift`。
+- v2 自带这份（内容是纯 HMD profile，**没有** `simulation_settings`，引用 `{pico}/icons/headset.svg`）；DP 连 `headset.svg` 都没有 ⇒ `patch_driver.ps1` 生成时去掉图标引用。
 
 ## 镜像基址 `0x180000000`；RVA↔文件偏移 `rva = file + 0xc00`
 
@@ -232,3 +284,9 @@ bit6 置位时每个输入更新打一行 ⇒ DP 直连下按住扳机 ~200 Hz �
 | `sub_180026E60` / `sub_1800274B0` / `sub_180027EF0` | type0 / type1,2 / type3 处理（IMU 解算）                |
 | `sub_18002CE90`                                     | UDP `recvfrom` 接收线程                                 |
 | `sub_18003D610`                                     | 控制器状态入口（HID 与 UDP 多路调用）                   |
+
+## 待办
+
+- **DP 驱动没实现 pose/raw & skeleton 输入**：DP / UW / v2 / SteamVR stub 四份 profile 都声明了 `/pose/raw` 与 `/input/skeleton/{left,right}`，但 DP 的 `driver_pico.dll`（669,536B）里**一个 `skeleton` 字符串都没有**，而 UW 驱动（905,216B）有 `/skeleton/hand/{left,right}` ⇒ Alyx 日志报 `Item /user/hand/left/input/skeleton/left in "skeleton" array missing path invalid device path for skeleton output`。
+  表现（用户实测）：**Alyx 里手部模型正常显示**，缺的是**手指只是搭在按键/摇杆上（不按下）时**的手指动作 —— Alyx 的手指动画走 `skeleton` 输入而不是 capsense 绑定（见上面「输入声明层」），骨架输出建不出来 ⇒ 触摸没有手指反馈。这是驱动功能缺失，数据层修不了。
+- **验证 `grip` 修法**（2026-10-16 起）：重启 SteamVR 后进 Alyx，把两个真实追踪环对顶 —— 虚拟环应当**刚好接触**、不再互相穿插；同时 `vrserver.txt` 里 `Both grip and aim are at 0` 那句应当消失（模型里已补 `grip` / `aim`）。不生效就改走「把几何 +0.069m 平移」那条（两者别同时做）。

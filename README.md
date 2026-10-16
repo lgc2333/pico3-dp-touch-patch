@@ -15,7 +15,7 @@
 A/B/X/Y、扳机、摇杆顶，六处触摸全部正常。
 
 - 头显侧只改内存，**重启失效** ⇒ 每次开机重跑一次；
-- 唯一的持久改动是 PC 上一个驱动文件上的补丁，可一键还原。
+- PC 侧只在驱动自带的几个文件上打补丁，可一键还原。
 
 ## 适用条件
 
@@ -33,76 +33,65 @@ A/B/X/Y、扳机、摇杆顶，六处触摸全部正常。
 
 ### 第 0 步 · 下载本项目
 
-在 GitHub 页面点 **Code → Download ZIP**，下载后解压。下面把解压出的文件夹统称「项目目录」。
+在 GitHub 页面点 **Code → Download ZIP**，解压；下面把解压出的文件夹统称「项目目录」。
 
-PC 上装好 **adb**（Android platform-tools，并加进 PATH）；**没装也行**——脚本会自动下载 platform-tools 到 `src\windows\temp\platform-tools\` 并用它（需要联网）。
+PC 上装不装 adb 都行 —— 没装的话脚本会自己下载到 `src\windows\temp\`（需要联网）。
 
 ### 1. 给 PC 驱动打补丁（一次性）
 
-> 只想恢复 A/B/X/Y 的触摸，不需要扳机与摇杆的？那这一步可以跳过。
+> 只想恢复 A/B/X/Y、不需要扳机与摇杆顶的触摸？这一步可以跳过。
 
-1. **完全退出** SteamVR 和 Business Streaming DP；刚用过 VR 的话**把 Steam 客户端也一起退** —— 实测 Steam 会映射 `driver_pico.dll`，它占着就写不进去（脚本会报文件被占用）；
-2. 双击 `src\windows\patch_driver.bat`，在 UAC 弹窗点「是」；它会先备份、逐字节校验再写入；只做一次。
-   `driver_pico.dll` 由脚本自己定位，找不到就直接问你要路径（粘贴进去即可，回车退出）。想跳过猜测也可以带参数 `-Dll <DLL路径>`。
-   同一个补丁顺手关掉厂商留在驱动里的调试打印：不打补丁时，一拉扳机 SteamVR Console 就会被 `pico: kTriggerTouch` 刷屏。
-3. 同一个脚本还会顺手修驱动 profile 里的一个厂商笔误：`resources\input\pico_controller_profile.json` 里那条 `"input/application_menu"` 少了一个 `/`，导致这条声明不生效、**menu 键在 SteamVR 里毫无反应**；脚本把它补成 `"/input/application_menu"`（实测补完 menu / system 键都正常）。原文件备份为同目录的 `pico_controller_profile.json.orig`，已经是正确写法时会跳过。
+1. **完全退出** SteamVR、Business Streaming DP 和 **Steam 客户端**（Steam 会占着驱动文件）；
+2. 双击 `src\windows\patch_driver.bat`，在 UAC 弹窗点「是」。
+   脚本自己找驱动、先备份再改、改完复核；找不到就直接问你要路径（或加参数 `-Dll <DLL路径>`）；
+3. 顺手补齐厂商漏掉/写错的几处资源：**menu 键在 SteamVR 里没反应**、**游戏里手柄模型整体偏 ≈9cm**、**头显 profile 漏发**（驱动每次启动都报错，头显会被 SteamVR 冒充成 Rift）。都只改文本文件，细节见 [`docs/notes/04-driver.md`](docs/notes/04-driver.md)。
 
 ### 2. 头显每次开机：注入头显
 
-1. 在头显 **设置 → 开发者选项** 里**打开 adb**（「USB 调试」或「无线调试」；该设备 adb 免授权，无线无需配对）；
-2. 连接头显：**USB 线**直连，或让头显与 PC 连同一网络（PC 开热点最省事）；
-   插了线就用线（脚本不会自己换成无线，也不动无线那条路）；要走无线得在头显 **开发者选项**里单独开无线调试。
-3. 双击 `src\windows\pico_touch.bat`（跑完窗口会停住等你按键；要指定序列号就带参数 `-Serial <序列号>`）。
-4. 脚本会自动完成：认头显 → 开 TCP 端口 → 拿临时 root → 推送文件 → 注入。缺的依赖（frida-inject、picohaxx）会从上游自动下载，**需要联网**。
-   USB 直连时中途会短断几秒（要给头显开一次 TCP 端口，adbd 重启一次），脚本会等它回来，属正常。
-5. 看到 `[+] 完成` 即可，之后能拔线、关窗口（注入跑在头显本地）。
+1. 在头显 **设置 → 开发者选项** 里**打开 adb**（「USB 调试」或「无线调试」；该设备免授权，无线无需配对）；
+2. 连接头显：**USB 线**直连，或让头显和 PC 连同一网络（PC 开热点最省事）。插了线就用线，脚本不会自己换成无线；
+3. 双击 `src\windows\pico_touch.bat`（跑完窗口会停住；指定序列号用 `-Serial <序列号>`）。
+   脚本自动完成：认头显 → 开 TCP 端口 → 拿临时 root → 推送 → 注入；缺的依赖会自动下载（需要联网）。
+   USB 直连时中途会短断几秒（要重开一次 TCP 端口），属正常；
+4. 看到 `[+] 完成` 即可，之后能拔线、关窗口（注入跑在头显本地）。
 
-> **懒得连接 PC 完成设备侧 hook？**
->
-> 先在头显上装 **Termux**（PC 上 `adb` 安装，或从头显侧载 APK），之后在运行上面步骤时就会顺手把设备侧脚本装进 Termux；
-> 以后每次开机点进 Termux 敲一行之后回车就行（提权**完全在头显侧完成、不依赖 PC**）：
+> **不想每次接 PC？** 头显上装 **Termux** 并打开一次后再跑头显补丁脚本（PC 侧 `adb` 安装，或头显侧载 APK），之后每次开机在 Termux 敲一行回车即可：
 >
 > ```shell
 > dptouch
 > ```
 >
-> 没装 Termux 时脚本什么都不装；流程与机制见 [`docs/notes/09-termux.md`](docs/notes/09-termux.md)。
-
-> 只想推文件、不提权也不注入？只双击运行 `src\windows\push.bat` 即可。
+> 机制见 [`docs/notes/09-termux.md`](docs/notes/09-termux.md)。只想推文件、不提权也不注入？双击 `src\windows\push.bat`。
 
 ## 头显端「企业串流」想换回 1.2.10？
 
-企业串流的版本是你自己装的（头显不会自动升级）；本项目只在头显端 **1.2.10** 上验证过，装了别的版本之后 DP 直连可能就不对了。
+本项目只在头显端 **1.2.10** 上验证过。头显连上 adb 后双击 `src\windows\downgrade_streaming.bat` 把它换回来。
 
-头显连上 adb 后（同上面第 2 步）双击 `src\windows\downgrade_streaming.bat`，脚本会把它换回 1.2.10。
-
-要 PC 端也一起换版本，脚本会先问你要不要下安装包（约 211 MB）：**先在「应用和功能」里完全卸载新版，再装它**，别直接覆盖装。
-
-> 降级会结束头显上正在跑的串流；PC 端换版本前也先完全退出 SteamVR 和 Business Streaming DP。
+PC 端要一起换版本时脚本会先问你要不要下安装包（约 211 MB）：**先在「应用和功能」里完全卸载新版，再装它**，别直接覆盖。
 
 ## 确认成功
 
-SteamVR → 设置 → 控制器 → **测试控制器**：手指依次搭在 A/B/X/Y、扳机、摇杆顶上，对应位置出现高亮即为成功。
+SteamVR → 设置 → 控制器 → **测试控制器**：手指依次搭在 A/B/X/Y、扳机、摇杆顶上，出现高亮即为成功。
 
 ## 还原 / 卸载
 
-| 改动                      | 怎么还原                                                                                            |
-| ------------------------- | --------------------------------------------------------------------------------------------------- |
-| PC 驱动（唯一的持久改动） | 把同目录的 `driver_pico.dll.orig` 复制回 `driver_pico.dll`；或重装 DP 驱动                          |
-| profile 的 menu 键修补    | 把 `driver\resources\input\pico_controller_profile.json.orig` 复制回同名文件                        |
-| 头显 root + 注入          | 重启即失效；也可 `picohaxx -unroot`                                                                 |
-| 推送到头显的文件          | 删除 `/data/local/tmp/{frida-inject,hook.js,start_touch.sh}`、`~/pico_touch`、`$PREFIX/bin/dptouch` |
+| 改动                                   | 怎么还原                                                                                            |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| PC 驱动                                | 把同目录的 `driver_pico.dll.orig` 复制回 `driver_pico.dll`；或重装 DP 驱动                          |
+| profile、手柄模型、头显 profile 的小修 | 把同目录的 `*.orig` 复制回同名文件（`pico_hmd_profile.json` 是本脚本新建的，删掉即可）              |
+| 头显 root + 注入                       | 重启即失效；也可 `picohaxx -unroot`                                                                 |
+| 推送到头显的文件                       | 删除 `/data/local/tmp/{frida-inject,hook.js,start_touch.sh}`、`~/pico_touch`、`$PREFIX/bin/dptouch` |
 
 ## 常见问题
 
 - **每次开机都要重跑吗？** 是。root 是临时的（只改内存、不碰系统分区），重启失效。
-- **有变砖风险吗？** 头显侧只改内存；PC 侧只改一个驱动文件，且自动备份。
+- **有变砖风险吗？** 头显侧只改内存；PC 侧只改驱动自带的文本文件与一个 DLL，且自动备份。
 - **注入完能拔线吗？** 能。注入跑在头显本地，与 PC 无关。
 - **升级固件后还能用吗？** 不一定，需要重新适配，见 [`docs/notes/06-root.md`](docs/notes/06-root.md)。
 
-## 原理（技术细节，可跳过）
+## 原理（可跳过）
 
-根因：**触摸数据一直都在头显的控制器服务里，只是 DP 链路没人读它。**
+触摸数据一直都在头显的控制器服务里，只是 DP 链路没人读它：头显 hook 把它写进 HID 报文，驱动补丁再把新增的位接到扳机 / 摇杆顶的 `/input/*/touch`。
 
 ```mermaid
 flowchart LR
@@ -112,10 +101,7 @@ flowchart LR
     D --> E["SteamVR ulButtonTouched ✓"]
 ```
 
-- **头显 hook**：把 4 个触摸字段写进 HID 报文（A/B/X/Y 只需这一步，驱动本就支持）。
-- **驱动补丁**：把新增的位接到扳机 / 摇杆顶的 `/input/*/touch`。
-
-完整逆向过程、协议与证据见 [`docs/notes/`](docs/notes/)。不可行路线（改 APK / 装 Magisk / 改 `/system`）见 [`docs/notes/08-dead-ends.md`](docs/notes/08-dead-ends.md)。
+完整逆向记录见 [`docs/notes/`](docs/notes/)，不可行路线见 [`docs/notes/08-dead-ends.md`](docs/notes/08-dead-ends.md)。
 
 ## 致谢
 
