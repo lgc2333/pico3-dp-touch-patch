@@ -12,7 +12,7 @@
 
 ## 修好之后
 
-A/B/X/Y、扳机、摇杆顶，六处触摸全部正常。
+A/B/X/Y、扳机、摇杆顶，六处触摸全部正常；游戏里的**手指**也会跟着动（搭上去就有动作）。
 
 - 头显侧只改内存，**重启失效** ⇒ 每次开机重跑一次；
 - PC 侧只在驱动自带的几个文件上打补丁，可一键还原。
@@ -45,6 +45,7 @@ PC 上装不装 adb 都行 —— 没装的话脚本会自己下载到 `src\wind
 2. 双击 `src\windows\patch_driver.bat`，在 UAC 弹窗点「是」。
    脚本自己找驱动、先备份再改、改完复核；找不到就直接问你要路径（或加参数 `-Dll <DLL路径>`）；
 3. 顺手补齐厂商漏掉/写错的几处资源：**menu 键在 SteamVR 里没反应**、手柄模型里 `tip` 的一处角度笔误、**头显 profile 漏发**（驱动每次启动都报错）。都只改文本文件，细节见 [`docs/notes/04-driver.md`](docs/notes/04-driver.md)。
+4. 同一步还会补上**手指动作**（手指搭在按键/扳机/摇杆顶上时，游戏里的手也跟着动）。机制见 [`docs/notes/04-driver.md`](docs/notes/04-driver.md)。
 
 ### 2. 头显每次开机：注入头显
 
@@ -88,18 +89,20 @@ SteamVR → 设置 → 控制器 → **测试控制器**：手指依次搭在 A/
 - **有变砖风险吗？** 头显侧只改内存；PC 侧只改驱动自带的文本文件与一个 DLL，且自动备份。
 - **注入完能拔线吗？** 能。注入跑在头显本地，与 PC 无关。
 - **升级固件后还能用吗？** 不一定，需要重新适配，见 [`docs/notes/06-root.md`](docs/notes/06-root.md)。
-- **游戏里手柄模型位置偏 ≈9cm？** 已知问题、**未解决**。SteamVR 菜单里位置是对的，偏的是游戏里：SteamVR 会把 PICO 手柄按 app 冒充成 Oculus Touch，游戏按 Oculus 的约定摆放模型。几何、位姿都验过没问题，能想到的杠杆（不再冒充 Oculus）会连带弄丢只带 Oculus 绑定的游戏，所以停在这里；实测与排除记录见 [`docs/notes/04-driver.md`](docs/notes/04-driver.md)。
+- **游戏里手柄模型位置偏 ≈9cm？** 已知问题、**未解决**：SteamVR 菜单里位置是对的，游戏里偏；原因与排除记录见 [`docs/notes/04-driver.md`](docs/notes/04-driver.md)。
 
 ## 原理（可跳过）
 
-触摸数据一直都在头显的控制器服务里，只是 DP 链路没人读它：头显 hook 把它写进 HID 报文，驱动补丁再把新增的位接到扳机 / 摇杆顶的 `/input/*/touch`。
+触摸数据一直都在头显的控制器服务里，只是 DP 链路没人读它：头显 hook 把它写进 HID 报文，驱动补丁既把新增的位接到扳机 / 摇杆顶的 `/input/*/touch`，也用它算出 `/input/skeleton/*` 的 31 根手指骨（Alyx 这类游戏的手指动画读的就是后者）。
 
 ```mermaid
 flowchart LR
     A["头显 pxrstreamingservice<br/>GetControllerKeyData<br/>controller_data_t +32/+36/+40/+44"] -->|Frida hook<br/>写进 HID 键值字 bit1/3/5/7| B["/dev/hidg0 USB"]
     B --> C["PC driver_pico.dll<br/>补丁"]
     C --> D["/input/*/touch"]
+    C --> F["/input/skeleton/*<br/>31 根手指骨"]
     D --> E["SteamVR ulButtonTouched ✓"]
+    F -.->|Alyx 等的手部动画| G["游戏里的手指 ✓"]
 ```
 
 完整逆向记录见 [`docs/notes/`](docs/notes/)，不可行路线见 [`docs/notes/08-dead-ends.md`](docs/notes/08-dead-ends.md)。
@@ -116,7 +119,7 @@ flowchart LR
 - [`frida`](https://frida.re/) —— 注入框架
 - [`picohaxx`](https://github.com/264312431/picohaxx) —— Qualcomm Adreno/KGSL 提权（Neo 3 适配）
 
-各自遵循其原始许可。本项目不分发 PICO 的私有二进制（驱动 DLL、APK 等）。
+各自遵循其原始许可。本项目不分发 PICO 的驱动 DLL / APK，但 `src\windows\src\driver_patch\dp_skeleton_payload.bin` 里的骨架代码是从 PICO v2 串流驱动的 `driver_pico.dll` 里整段提取的 —— 权利仍归 PICO，仅供个人设备修复使用。
 
 ## 免责声明
 

@@ -4,3 +4,4 @@ temp/
 node_modules/
 pnpm-lock.yaml
 package-lock.json
+__pycache__/

@@ -1,1 +1,4 @@
 temp/
+
+# 生成的骨架 payload 清单（打包器输出，格式由它自己定）
+src/windows/src/driver_patch/
