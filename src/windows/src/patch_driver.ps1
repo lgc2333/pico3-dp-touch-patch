@@ -18,6 +18,13 @@ patch_driver.ps1 —— 给 PICO DP 驱动打补丁
     把这次 atoi 调用换成 `xor eax, eax`，标志恒 0，游戏里的位姿与桌面/待机一致。
     实测：补完用真游戏（The Lab）验证，模型不再并到一起。详见 docs/notes/04_e-driver-offset.md。
 
+改动 D（只改两个文本资源，不改 DLL）：**让虚拟手落在握把上，模型仍和实物对齐**
+    驱动把 device pose 报在跟踪环附近，而 VRChat 这类 app 的虚拟手吃的是同一个 device pose
+    ⇒ 手比握把低 ~4cm / 10°。这里把发布的位姿挪到握把点（RVRPlugin.ini 的 [controller] 偏移），
+    再把渲染模型顶点做反向平移+旋转（从 .orig 重算），于是手落在握把上、模型仍留在物理位置。
+    改动 C 的 apprun 是同一件事的「只移位姿、不补模型」版本；本项是它的正解。
+    数值、公式、证伪记录：见 docs/notes/04_f-driver-hand-grip.md。
+
 顺手修 profile：`resources\input\pico_controller_profile.json` 里的 `"input/application_menu"` 少一个 `/`，
     这条声明不生效 ⇒ menu 键在 SteamVR 里没反应；补成 `"/input/application_menu"`（实测补完 menu / system 键都正常）。
     只改 JSON 文本，DLL 不读这个文件；备份为同名 `.orig`。
@@ -304,7 +311,7 @@ foreach ($p in $man.patches) {
     if ($got -ne $p.new) { DieVerify "挂钩点 0x$('{0:X}' -f [int]$p.rva) 不对" }
 }
 Write-Host '[+] 复核通过。重启 SteamVR 后生效。' -ForegroundColor Green
-Write-Host '[i] 还原：把同名 .orig 覆盖回去（driver_pico.dll / profile / rendermodels\*.json 都有）。'
+Write-Host '[i] 还原：把同名 .orig 覆盖回去（driver_pico.dll / RVRPlugin.ini / profile / rendermodels\*.json / rendermodels\*\*.obj 都有）。'
 
 # --- 顺手修 profile 里的 application_menu 笔误（见文件头；纯 JSON 文本，DLL 不读它）---
 $prof = Join-Path (Split-Path (Split-Path (Split-Path $dll -Parent) -Parent) -Parent) 'resources\input\pico_controller_profile.json'
@@ -418,6 +425,138 @@ else {
         Write-Host "[+] $($m.Name)：$($changes -join ' / ')（备份 $(Split-Path $jorig -Leaf)）" -ForegroundColor Green
     }
 }
+
+# --- 改动 D：手柄握把位姿（见文件头与 docs/notes/04_f-driver-hand-grip.md）---
+# 位姿与模型必须成对改：ini 把 device pose 挪到握把点，顶点做反向平移+旋转留在物理位置。
+# 顶点从 .orig 重算；17 个原始文件的指纹必须匹配（换了版本就中止，别硬移）。
+$handObjSha = '6a6e82bfda8ac4ad7937905bb8cf2691db51c6e22674ce6ec6afecff110dc208'
+$handCfgs = @(
+    [pscustomobject]@{ Dir = 'pico_neo3_leftcontroller'; Tx = 0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = -0.99; Roll = 10.23 },
+    [pscustomobject]@{ Dir = 'pico_neo3_rightcontroller'; Tx = -0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = 0.99; Roll = -10.23 }
+)
+$inv = [System.Globalization.CultureInfo]::InvariantCulture
+
+function Get-HandObjSha {
+    $ms = New-Object System.IO.MemoryStream
+    try {
+        foreach ($c in $handCfgs) {
+            $d = Join-Path $rmRoot $c.Dir
+            if (-not (Test-Path -LiteralPath $d)) { return $null }
+            foreach ($f in @(Get-ChildItem -LiteralPath $d -Filter '*.obj' | Sort-Object Name)) {
+                $bo = "$($f.FullName).orig"
+                $src = if (Test-Path -LiteralPath $bo) { $bo } else { $f.FullName }
+                $bytes = [System.IO.File]::ReadAllBytes($src)
+                $ms.Write($bytes, 0, $bytes.Length)
+                $rel = [System.Text.Encoding]::ASCII.GetBytes($c.Dir + '/' + $f.Name)
+                $ms.Write($rel, 0, $rel.Length)
+                $ms.WriteByte(0)
+            }
+        }
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        try { $hash = $sha.ComputeHash($ms.ToArray()) } finally { $sha.Dispose() }
+        return (($hash | ForEach-Object { $_.ToString('x2') }) -join '')
+    }
+    finally { $ms.Dispose() }
+}
+
+if (-not (Test-Path -LiteralPath $rmRoot)) { Die "找不到 $rmRoot（换过版本？）—— 改动 D 需要它，已中止" }
+$shaGot = Get-HandObjSha
+if ($shaGot -ne $handObjSha) {
+    Die ("手柄渲染模型不是支持的那版（指纹 {0}，预期 {1}）；先把 rendermodels\pico_neo3_*\*.obj.orig 还原回去再跑（已中止，未写入）" -f $shaGot, $handObjSha)
+}
+Write-Host '[+] 手柄渲染模型校验通过' -ForegroundColor Green
+
+# 备份：`.orig` = 动手前那一刻（这里已验过是支持的那版）
+foreach ($c in $handCfgs) {
+    foreach ($f in @(Get-ChildItem -LiteralPath (Join-Path $rmRoot $c.Dir) -Filter '*.obj')) {
+        if (-not (Test-Path -LiteralPath "$($f.FullName).orig")) { Copy-Item -LiteralPath $f.FullName -Destination "$($f.FullName).orig" -Force }
+    }
+}
+
+function Convert-HandObj {
+    param($Cfg)
+    $deg = [math]::PI / 180.0
+    $cy = [math]::Cos(-$Cfg.Yaw * $deg); $sy = [math]::Sin(-$Cfg.Yaw * $deg)
+    $cz = [math]::Cos(-$Cfg.Roll * $deg); $sz = [math]::Sin(-$Cfg.Roll * $deg)
+    $changed = 0
+    $d = Join-Path $rmRoot $Cfg.Dir
+    foreach ($f in @(Get-ChildItem -LiteralPath $d -Filter '*.obj' | Sort-Object Name)) {
+        $orig = "$($f.FullName).orig"
+        $text = [System.IO.File]::ReadAllText($orig, [System.Text.Encoding]::ASCII)
+        $nl = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
+        $lines = $text -split "\r?\n"
+        $cnt = 0
+        for ($i = 0; $i -lt $lines.Length; $i++) {
+            if ($lines[$i] -notmatch '^v\s+(\S+)\s+(\S+)\s+(\S+)\s*$') { continue }
+            $x = [double]::Parse($Matches[1], $inv)
+            $y = [double]::Parse($Matches[2], $inv)
+            $z = [double]::Parse($Matches[3], $inv)
+            $x1 = $x * $cy + $z * $sy
+            $z1 = - $x * $sy + $z * $cy
+            $x2 = $x1 * $cz - $y * $sz
+            $y2 = $x1 * $sz + $y * $cz
+            $lines[$i] = 'v  {0} {1} {2}' -f ($x2 - $Cfg.Tx).ToString('F6', $inv), ($y2 - $Cfg.Ty).ToString('F6', $inv), ($z1 - $Cfg.Tz).ToString('F6', $inv)
+            $cnt++
+        }
+        if ($cnt -eq 0) { Die "$($f.Name) 里没有顶点，已中止（不是支持的那版？）" }
+        $out = $lines -join $nl
+        if ([System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::ASCII) -ne $out) {
+            [System.IO.File]::WriteAllText($f.FullName, $out, [System.Text.Encoding]::ASCII)
+            $changed++
+        }
+        $vc = ([regex]::Matches([System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::ASCII), '(?m)^v\s')).Count
+        if ($vc -ne $cnt) { Die "$($f.Name) 顶点数复核失败" }
+    }
+    return $changed
+}
+
+foreach ($c in $handCfgs) {
+    $n = Convert-HandObj -Cfg $c
+    Write-Host "[+] $($c.Dir)：顶点已反向补偿（$n 个文件）" -ForegroundColor Green
+}
+
+# ini：把 [controller] 段换成目标值（只动这一段，其它配置原样保留）
+$ini = Join-Path (Split-Path $dll -Parent) 'RVRPlugin.ini'
+if (-not (Test-Path -LiteralPath $ini)) {
+    Write-Host "[!] 没找到 $ini（换过版本？），跳过 [controller] 偏移" -ForegroundColor Yellow
+}
+else {
+    $iniOrig = "$ini.orig"
+    if (-not (Test-Path -LiteralPath $iniOrig)) {
+        Copy-Item -LiteralPath $ini -Destination $iniOrig -Force
+        Write-Host "[+] 已备份 -> $(Split-Path $iniOrig -Leaf)"
+    }
+    $text = [System.IO.File]::ReadAllText($ini, [System.Text.Encoding]::ASCII)
+    $nl = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
+    $out = New-Object System.Collections.Generic.List[string]
+    $skip = $false
+    foreach ($ln in ($text -split "\r?\n")) {
+        if ($ln -match '^\s*\[controller\]\s*$') { $skip = $true; continue }
+        if ($skip -and $ln -match '^\s*\[') { $skip = $false }
+        if (-not $skip) { $out.Add($ln) }
+    }
+    while ($out.Count -gt 0 -and $out[$out.Count - 1] -eq '') { $out.RemoveAt($out.Count - 1) }
+    $sec = New-Object System.Collections.Generic.List[string]
+    $sec.Add('[controller]')
+    foreach ($c in $handCfgs) {
+        $side = if ($c.Dir -like '*left*') { 'left' } else { 'right' }
+        $sec.Add(('{0}x={1}' -f $side, $c.Tx.ToString($inv)))
+        $sec.Add(('{0}y={1}' -f $side, $c.Ty.ToString($inv)))
+        $sec.Add(('{0}z={1}' -f $side, $c.Tz.ToString($inv)))
+        $sec.Add(('{0}pitch=0.0' -f $side))
+        $sec.Add(('{0}yaw={1}' -f $side, $c.Yaw.ToString($inv)))
+        $sec.Add(('{0}roll={1}' -f $side, $c.Roll.ToString($inv)))
+    }
+    $new = (($out -join $nl).TrimEnd("`r", "`n")) + $nl + ($sec -join $nl) + $nl
+    if ([System.IO.File]::ReadAllText($ini, [System.Text.Encoding]::ASCII) -ne $new) {
+        [System.IO.File]::WriteAllText($ini, $new, [System.Text.Encoding]::ASCII)
+        Write-Host '[+] RVRPlugin.ini：[controller] 偏移已写入' -ForegroundColor Green
+    }
+    else { Write-Host '[=] RVRPlugin.ini：[controller] 偏移已是最新，跳过' }
+    $chk = [System.IO.File]::ReadAllText($ini, [System.Text.Encoding]::ASCII)
+    if (-not $chk.Contains('[controller]') -or -not $chk.Contains('leftz=-0.0401')) { Die 'RVRPlugin.ini 复核失败：没写进 [controller] 偏移' }
+}
+Write-Host '[+] 手柄握把位置已修正：虚拟手落在握把上，模型仍和实物对齐' -ForegroundColor Green
 
 # --- 补厂商漏发的 HMD profile（见文件头）---
 $inRoot = Join-Path $resRoot 'input'

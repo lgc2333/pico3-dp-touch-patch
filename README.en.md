@@ -28,6 +28,7 @@ Besides the touch bits, the driver patch also repairs a few things the vendor sh
 - the driver **fails to load the headset profile and logs an error on every start** — the vendor never shipped `pico_hmd_profile.json`;
 - **finger animation in games** — `/pose/raw` and `/skeleton/*` are filled in, which is what games such as Alyx need for the fingers to move;
 - **controller models sitting ~4 cm off (and slightly tilted) in games** — the streaming app tells the driver that a game started via an `apprun` message, and the driver adds a pose offset on top of it; the patch makes the driver ignore that message, so the in-game controller pose matches the SteamVR menu / standby one.
+- **the virtual hand not sitting in the controller / the arm not straightening** — the driver reports the controller pose near the tracking ring, so a virtual hand grabbing at that same pose ends up ~4 cm below the grip; the patch moves the pose to the grip point and compensates the model vertices in the opposite direction, so the hand lands on the grip while the controller model stays aligned with the real one.
 
 ## Requirements
 
@@ -84,14 +85,16 @@ If you also want the PC side on that older version, the script first asks whethe
 
 SteamVR → Settings → Controllers → **Test Controllers**: rest a finger on A/B/X/Y, the triggers and the stick tops in turn; each one highlighting means it works.
 
+Also take a look at the controllers: the virtual hand should sit right on the grip, and the controller model should stay aligned with the real one.
+
 ## Revert / uninstall
 
-| Change                                              | How to revert                                                                                                                                   |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| PC driver                                           | Copy `driver_pico.dll.orig` in the same folder back over `driver_pico.dll`; or reinstall the DP driver                                          |
-| The profile, controller model and HMD-profile fixes | Copy each `*.orig` in the same folder back over the file of the same name (`pico_hmd_profile.json` was created by this script — just delete it) |
-| Headset root + injection                            | gone after a reboot; or run `picohaxx -unroot`                                                                                                  |
-| Files pushed to the headset                         | delete `/data/local/tmp/{frida-inject,hook.js,start_touch.sh}`, `~/pico_touch` and `$PREFIX/bin/dptouch`                                        |
+| Change                                                               | How to revert                                                                                                                                   |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| PC driver                                                            | Copy `driver_pico.dll.orig` in the same folder back over `driver_pico.dll`; or reinstall the DP driver                                          |
+| The profile, controller model, `RVRPlugin.ini` and HMD-profile fixes | Copy each `*.orig` in the same folder back over the file of the same name (`pico_hmd_profile.json` was created by this script — just delete it) |
+| Headset root + injection                                             | gone after a reboot; or run `picohaxx -unroot`                                                                                                  |
+| Files pushed to the headset                                          | delete `/data/local/tmp/{frida-inject,hook.js,start_touch.sh}`, `~/pico_touch` and `$PREFIX/bin/dptouch`                                        |
 
 ## FAQ
 
