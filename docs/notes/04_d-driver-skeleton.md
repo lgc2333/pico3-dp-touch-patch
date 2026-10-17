@@ -54,7 +54,7 @@
 用「以 app 身份读骨架」的探针（`docs/notes/artifacts/app_skeleton_probe.py`，**必须 `--scene`**：后台 app 拿不到输入，所有 action 都是 inactive）+ Frida 钩我们自己搬进去的更新器（`docs/notes/artifacts/hook_updater.py`，能强制掩码）量出来的事实：
 
 - **每帧更新在跑**：更新器 ~200 次/秒/手；不碰键时喂进去的是 `mask=0x0000, trig=0, grip=0`。
-- **驱动发出的姿势原样到达 app**：把 OpenVR 的四元数按 `HmdQuaternionf_t { float w, x, y, z; }`（**w 在最前**）读，驱动的 31 根骨与 app 读回的差 **0.00 mm**（`compare_app_bones.py`）。⚠️ 之前"运行时改写了姿势"的结论是**读法错误**：`VRBoneTransform_t.orientation` 内存里是 w 开头，按 x,y,z,w 读会得到"转了一个分量"的假象。
-- **v2 的算法本身是对的**（正确读法重画 `render_v2_poses.py`）：不碰键 = **张开的手**（指尖到手腕 188mm、手指伸直），摸**扳机 / 握把** = 手指**弯**下去（指尖 158/112/90/80），摸 A/X、B/Y、摇杆顶、system 只动拇指。
+- **驱动发出的姿势原样到达 app**：把 OpenVR 的四元数按 `HmdQuaternionf_t { float w, x, y, z; }`（**w 在最前**）读，驱动的 31 根骨与 app 读回的差 **0.00 mm**（用一次性脚本逐骨对比）。⚠️ 之前"运行时改写了姿势"的结论是**读法错误**：`VRBoneTransform_t.orientation` 内存里是 w 开头，按 x,y,z,w 读会得到"转了一个分量"的假象。
+- **v2 的算法本身是对的**（按正确读法把 v2 的姿势重画一遍）：不碰键 = **张开的手**（指尖到手腕 188mm、手指伸直），摸**扳机 / 握把** = 手指**弯**下去（指尖 158/112/90/80），摸 A/X、B/Y、摇杆顶、system 只动拇指。
 - **身份/绑定与手指无关**：把 app 的模拟类型从 `oculus_touch` 换成 `knuckles`（见上面「把 app 模拟成 Index」一节）**没有改变**症状。
 - **如果修完镜像还有问题再看这些**：① 给建组件的跳板传一份**非 NULL 的 `pGripLimitTransforms`**（`docs/notes/artifacts/make_grip_limit_pose.py` 已经能生成一份，用 v2 姿势表里"握把按下"那一帧）；② `GetSkeletalReferenceTransforms(BindPose)` 对这个骨架返回全零，若 summary 还是不对，这是下一个要解释的现象。

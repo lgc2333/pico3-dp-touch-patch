@@ -104,18 +104,18 @@ Scene app 占场景时，两只手柄的**设备位姿**各偏一段——自身
 之前只能从截图推断「模型整体平移 9.7cm」；这轮把网格和姿态的关系做成了可测的：
 
 - **网格长轴与 +Z 的关系已定死**：`left_body.obj` 占 `x[-0.040,+0.048] y[-0.005,+0.085] z[-0.031,+0.136]`；沿 z 的剖面里 `z[-0.031,+0.02]` 是最大半径 0.085 的「环 + 面盘」区，`z[+0.02,+0.136]` 收窄到 0.044→0.028 的柄身区，且空心判据只在 `z[+0.015,+0.030]` 出现 40% 空芯（环的截面）。⇒ 模型原点位于**环—柄交界**，柄身朝 **+Z** 伸出约 13.6cm，`body`/`handgrip` 的 `+0.097` 落在柄身靠末端。
-- **世界方向已用运行时标定**：新探针 `temp/driver/probe_ruler_numbers.py` 沿控制器自己的 +Z 摆一列彩色刻度（`-6/-3/0/+3/+6/+9.7/+13/+16cm`，蓝→青→绿→黄→品红→橙→红），并把「设备姿态原点」和「+9.7cm 点」投影到左眼视口记账。同一帧里用 SteamVR 自带「VR 视图」镜像核对：刻度 x 随 z 单调递增，且与 compositor 白模型的柄身方向一致 ⇒ **模型 +Z = 柄身 = 朝环外**，`mTrackingToComponent*` 的 0.097 方向与用户描述的「偏」方向可以做符号判断。
+- **世界方向已用运行时标定**：一个一次性的标尺探针（不入库）沿控制器自己的 +Z 摆一列彩色刻度（`-6/-3/0/+3/+6/+9.7/+13/+16cm`，蓝→青→绿→黄→品红→橙→红），并把「设备姿态原点」和「+9.7cm 点」投影到左眼视口记账。同一帧里用 SteamVR 自带「VR 视图」镜像核对：刻度 x 随 z 单调递增，且与 compositor 白模型的柄身方向一致 ⇒ **模型 +Z = 柄身 = 朝环外**，`mTrackingToComponent*` 的 0.097 方向与用户描述的「偏」方向可以做符号判断。
 - **镜像视口映射不能想当然**：镜像窗口不是 1:1 的眼缓冲（实测把日志里的视口坐标线性映射到窗口像素后，左右手残差不同）。要在镜像里做逐点量测，必须先用一列已知位置的标尺色块反解「缩放 + 偏移」，不能直接用 `getProjectionMatrix` 的结果换算像素。
 - **镜像同时画 compositor 内建模型与 app 帧**：`vrmonitor` 的「VR 视图」在「无 Scene app」和「SteamVR Home 持有 Scene 焦点」两种状态下，compositor 的控制器模型位置逐像素一致（阈值 40 的差分只剩 2763 px，全是抗锯齿/抖动）⇒ 那两张图里画的是 compositor 的内建模型（`{pico}` 路径），和用户口径一致：compositor 那条一直是对的，偏的是 app 那条。**但镜像本身不是「只画 compositor」**，见下一条更正。
 - **更正（同日）：镜像是可以显示 Scene app 帧的** —— 只要 app 真的在提交。判据：最小 Scene app 把双眼涂成品红后，镜像里品红占 69650/131k 采样点。之前几次「镜像只看得到 compositor 模型」是因为捕获时 app 已经退出（帧数跑完）。⇒ **用镜像量测 app 侧渲染是可行的**，前提是①捕获必须在 app 运行期间；②别用「窗口置顶」截图（会打断用户），改用 `PrintWindow`（见下条）。
-- **无人值守抓镜像的办法**：`temp/tools/capture_window.ps1`（`-Hwnd <hwnd>` + `PrintWindow(PW_RENDERFULLCONTENT)`）可以在**不抢前台**的情况下抓到「VR 视图」窗口，窗口被遮挡也没关系；`-Foreground` 才置顶。注意窗口 hwnd 会变（`SteamVR 状态` 与 `VR 视图` 都在 `vrmonitor.exe` 下），抓之前先用 `Get-Process | ? MainWindowHandle -ne 0` 复查。
-- **位置对照标尺（本次新增的定量工具）**：`temp/driver/scene_three_offsets.py --mode ladder` 会在同一帧里把同一个手柄网格画 7 份，沿模型 +Z 分别偏移 `-9.7 / -5 / -2.5 / 0 / +2.5 / +5 / +9.7 cm`，颜色 `红 / 橙 / 黄 / 灰 / 绿 / 青 / 蓝`，其中**灰色＝compositor 的摆放（设备姿态 + 单位阵）**。镜像里已确认 7 份都能渲染（`ps_ladder.png`）。游戏里模型与哪一份重合，就直接读出偏移量与符号 —— 这是目前唯一能把「app 侧偏移」变成数值的仪器。
+- **无人值守抓镜像的办法**：一个一次性的抓窗脚本（`PrintWindow(PW_RENDERFULLCONTENT)`，按 `-Hwnd <hwnd>` 指定窗口）可以在**不抢前台**的情况下抓到「VR 视图」窗口，窗口被遮挡也没关系；`-Foreground` 才置顶。注意窗口 hwnd 会变（`SteamVR 状态` 与 `VR 视图` 都在 `vrmonitor.exe` 下），抓之前先用 `Get-Process | ? MainWindowHandle -ne 0` 复查。
+- **位置对照标尺（本次新增的定量工具）**：一次性 Scene 探针的 `--mode ladder` 模式会在同一帧里把同一个手柄网格画 7 份，沿模型 +Z 分别偏移 `-9.7 / -5 / -2.5 / 0 / +2.5 / +5 / +9.7 cm`，颜色 `红 / 橙 / 黄 / 灰 / 绿 / 青 / 蓝`，其中**灰色＝compositor 的摆放（设备姿态 + 单位阵）**。镜像里已确认 7 份都能渲染。游戏里模型与哪一份重合，就直接读出偏移量与符号 —— 这是目前唯一能把「app 侧偏移」变成数值的仪器。
 - **地面高度反推原点位置不可行**：遍历网格所有「贴地」朝向（绕 z/x 各 15° 步进）后，原点离地高度的取值覆盖 `0.5–12.9cm`（中位 5.65cm）⇒ 用户测到的 `Y=+0.0575` 无法判别姿态原点对应实物哪个点，别再拿这条数据做结论。
 - **原点在实物上的位置（体积加权，双手机械对称）**：`*_body.obj` 体积 137.8cm³、体积重心 `z=+0.0462`（轴向 46.2%）；**原点是整个几何里离 -Z 端最近的点，位于轴向 18.5%、柄身半径最低处**（`z=0` 的顶点只剩 439 个）。体积沿 z 的分布是两端重（28.1% / 36.3%）中间轻 —— 环在一端、柄身朝 +Z 收窄到 12.6cm 处，与镜像里「柄身朝 +Z、环在 -Z」一致。⇒ **姿态原点落在环—柄交界（环根），而手掌实际握在柄身中段（z≈+0.05~0.09）**，两者相距约 5–9cm，量级正好覆盖用户报的 9.7cm。
 - **截面「实心度」再确认一次形状**：按 z 逐层求表面与平面的交线并算包围盒填充率，`z≤+0.013` 的层宽 8.6–8.8cm（环），`z≥+0.023` 骤降到 5.4cm 并一路收窄到 2.1cm（柄身）⇒ **环只占 z∈[-0.031,+0.013]，柄身从 z≈+0.013 一直到 +0.136**；手握点（体积重心 +0.046、`button_grip` 网格 +0.060~0.079）落在柄身中段，和模型自己声明的 `handgrip=+0.097` 差 2–4cm（模型声明值比实测握点更靠柄尖）。
-- **姿态源侧的数值（旧探针实测，别读错列）**：`pose_path_probe --oculus-only --scene` 的结论是 **`raw` / `legacy` / `openxr_grip = 0.00cm`、`handgrip = +9.70cm`、`base = +17.46cm`、`tip = +1.22cm`**（相对设备姿态）。⇒ **驱动报的设备姿态原点与网格原点同为一点，握把/`base` 都在它前方（+Z）**，两者内部自洽；这也解释了为什么「把 `handgrip.origin` 归零」改不动视觉偏移（那只挪动握把点，不挪网格）。
+- **姿态源侧的数值（旧探针实测，别读错列）**：旧的 pose 路径探针（`--oculus-only`、跑在 Scene app 里）的结论是 **`raw` / `legacy` / `openxr_grip = 0.00cm`、`handgrip = +9.70cm`、`base = +17.46cm`、`tip = +1.22cm`**（相对设备姿态）。⇒ **驱动报的设备姿态原点与网格原点同为一点，握把/`base` 都在它前方（+Z）**，两者内部自洽；这也解释了为什么「把 `handgrip.origin` 归零」改不动视觉偏移（那只挪动握把点，不挪网格）。
 - **为什么「compositor 对 / app 偏」这条对照无法判别**：两条路都把网格摆到「设备姿态原点」上（compositor 用设备姿态，app 用 `device * mTrackingToComponentRenderModel(=单位阵)`），差值恒为 0。所以「哪一侧对」实际取决于**实物握把相对姿态原点的位置**这个外部事实：若原点在环根而握把在 z≈+0.05，则「app 偏」与「compositor 偏」在数据上不可区分，必须用实物指认来破对称。
-- **另一个同源实测**：`hand_root_probe.py` 在 `VRSkeletalMotionRange_WithController` 下读骨架，`j0` 恒为 `(0,0,0)`、`j1/j2` 是固定的小偏移（约 `±0.034, +0.037, +0.165`），与设备位姿相差 130cm 以上 ⇒ **骨架返回的不是世界坐标，不能用它来判定手的位置**（那次「骨架根偏多少」的猜想就此作废）；要测手的位置得换 `GetSkeletalReferenceTransforms` 或走 app 侧。
+- **另一个同源实测**：另一个一次性探针在 `VRSkeletalMotionRange_WithController` 下读骨架，`j0` 恒为 `(0,0,0)`、`j1/j2` 是固定的小偏移（约 `±0.034, +0.037, +0.165`），与设备位姿相差 130cm 以上 ⇒ **骨架返回的不是世界坐标，不能用它来判定手的位置**（那次「骨架根偏多少」的猜想就此作废）；要测手的位置得换 `GetSkeletalReferenceTransforms` 或走 app 侧。
 - **下一个最小实验（一次指认即可破对称，探针已就绪）**：戴着头显、正常握住手柄，报「彩色刻度梯里**哪一格压在掌心/握把上**」。刻度梯为 `蓝 -6 / 青 -3 / 绿 原点 / 黄 +3 / 品红 +6 / 橙 +9.7 / 红 +13cm`。
   - 若答案是「**绿（原点）**」⇒ 驱动姿态与网格一致，9.7cm 来自 app 侧的模型挂接（继续追 `+472` 的读取者与 app 父节点）；
   - 若答案是「**品红/橙（+6~+9.7）**」⇒ 网格原点与实物握把差 9.7cm，修法是把网格与 `component_local` 一起平移 −9.7cm（面板与游戏会同时对齐）。
@@ -123,38 +123,38 @@ Scene app 占场景时，两只手柄的**设备位姿**各偏一段——自身
 
 ## 翻案 ②：WebXR 标定台（可直接读数）
 
-`temp/webxr/xr_overlap_probe.html` + `temp/webxr/xr_ctl.mjs`（静态服务在 `127.0.0.1:8010`，根目录是 `temp/`）：
+自制了一个最小的 WebXR 页面 + 一个能用 CDP 操作它的脚本（都不入库），静态服务起在 `127.0.0.1:8010`：
 
-- **不需要人点 ENTER VR**：Chrome 带 `--remote-debugging-port=9333` 起（`temp/chrome-xr` 独立 profile），`node temp/webxr/xr_ctl.mjs click "#VRButton"` 用 CDP `Input.dispatchMouseEvent` 派发**可信点击**，`requestSession()` 的用户激活条件满足；随后 `eval "window.__probe.state()"` 读 `presenting / tracked / frames`，不必再问用户「进去了没有」。
+- **不需要人点 ENTER VR**：Chrome 带 `--remote-debugging-port=9333` 起一个独立 profile，脚本用 CDP `Input.dispatchMouseEvent` 点 `#VRButton` —— 这是**可信点击**，`requestSession()` 的用户激活条件满足；随后读 `window.__probe.state()` 的 `presenting / tracked / frames`，不必再问用户「进去了没有」。
 - **别用 `renderer.xr.getControllerGrip(i)` 量姿态**：本机 Three.js r169 下若在 session 起来之后才创建，grip 的 `matrix` 恒为单位阵（`position` 全 0，镜像里模型落在原点），换成自己按 `XRFrame.getPose(inputSource.gripSpace, referenceSpace)` 写 `Group.matrix` 才准（页面里就是这么做的）。
-- **镜像能直接看 WebXR 帧**：`temp/tools/capture_window.ps1 -Hwnd <VR 视图>`（`PrintWindow`，不抢前台）即可，和抓 compositor 是同一套；SteamVR 的 "VR 视图" hwnd 会变，先枚举 `vrmonitor.exe` 的窗口。
+- **镜像能直接看 WebXR 帧**：用同一个一次性抓窗脚本（`-Hwnd <VR 视图>`，`PrintWindow`，不抢前台）即可，和抓 compositor 是同一套；SteamVR 的 "VR 视图" hwnd 会变，先枚举 `vrmonitor.exe` 的窗口。
 - **标定结果（用户现场指认）**：以 grip 空间为原点、沿模型自身 +Z 摆 `-19.4 / -9.7 / 0 / +9.7 / +19.4 cm` 五份，**`-9.7`（绿）＝ 正确位置 ＝ compositor 的摆放**；更往里（`-19.4`）已被用户否掉，不是游戏里的位置。⇒ **网格要落在 grip 空间原点往后 9.7cm 处才对**，也就是「网格挂到手柄空间原点」这一档（0）恰好偏出 9.7cm —— 与用户报的偏移量、与 JSON 里 `handgrip=+0.097` 同一个量级，方向为「朝环 / 往上」。
 - **下一步只差一次物理指认**：页面现在只留两份（**白 = 挂手柄空间原点**、**绿 = 正确**）。把两只手柄的环怼在一起，看白的模型是否像游戏里那样互相陷进去；是则「游戏把模型挂到了 grip 姿态而不是设备姿态」成立，接着追 Scene app 侧拿到 +9.7 的那个位姿源（`/pose/grip` vs 设备姿态），而不是再动资源。
 
 ## 翻案 ③：游戏自身两帧的定量比对（20:1x，用户现场截图）
 
-用户给了同一姿势下的一对截图（`正常位置` = 无 drift / `不正常位置` = Scene app 等封面时），`temp/driver/game/`：
+用户给了同一姿势下的一对截图（`正常位置` = 无 drift / `不正常位置` = Scene app 等封面时）：
 
 - **相机没动**：两帧天空带与地面带逐像素平均差 `0.40 / 0.09`（/255），山区带的大差异全来自手柄模型本身 ⇒ 可以把手柄的像面位移直接当成模型漂移。
 - **正常帧是两个独立连通块，漂移帧并成一个**：白模型的连通域在正常帧是 `n=17886` 与 `18814` 两块，漂移帧合并成 `n=28675` 一块（bbox `x[459,859]`）⇒ 漂移让两只模型在像面上真的叠在一起（用户说的 overlap 有了像素级证据）。
 - **漂移方向 = 各自朝内**：正常帧两模型 bbox 外缘 `392 / 920`（跨度 528px），漂移帧 `459 / 859`（跨度 400px），每只向内缩 ≈64px；高度 145→159 略长。⇒ 每只模型沿「自己柄身朝环」方向位移，横向分量约 3–4cm，其余在深度里（模型变长/变近）。
-- **因此 sweep 探针的范围是对的**：`temp/webxr/xr_drift_sweep.html` 让白色模型沿模型自身 +Z 连续扫 `-30 … +10cm`，绿色 22% 透明度参考固定在 `-9.7`（= 正确 = compositor），**扣扳机冻结**并把冻结值写进 `window.__probe.state().history`（CDP 可直接读，不需要用户读数）；冻结再扣一次继续扫。
+- **因此 sweep 探针的范围是对的**：另一个自制页面（不入库）让白色模型沿模型自身 +Z 连续扫 `-30 … +10cm`，绿色 22% 透明度参考固定在 `-9.7`（= 正确 = compositor），**扣扳机冻结**并把冻结值写进 `window.__probe.state().history`（CDP 可直接读，不需要用户读数）；冻结再扣一次继续扫。
 - 待定：漂移的**精确标量**（用户现场扣一次扳机即可；下一节用真游戏量出是 4.28cm）。已知它朝环方向、量级 3–9cm，且 `-19.4` 已被用户否掉 ⇒ 真值大概在 `-0.097` 与 `-0.194` 之间，不能直接套用 `handgrip` 的 9.7。
 
 ## 改判：漂移在**设备位姿**，不在渲染模型（20:2x）
 
-用真游戏复现成功（`temp/driver/game2/`，HL:Alyx appid 546560，`steam://rungameid/546560` 拉起后 `hlvr.exe` 一出现即进入漂移态）：
+用真游戏复现成功（HL:Alyx appid 546560，`steam://rungameid/546560` 拉起后 `hlvr.exe` 一出现即进入漂移态）：
 
 - **和用户两张截图的数字逐项吻合**：正常帧两个白色连通块 `n=18128 / 18968`、外缘跨度 **528px**；漂移帧并成一块 `n=28813`、跨度 **400px**（用户那对是 528/400 与 17886/18814/28675）。背景天空带逐像素平均差 `0.073/255` ⇒ 相机没动，可以逐像素比。
 - **确定性 A/B**：杀 `hlvr.exe` 后 8 秒再抓，两个连通块与外缘坐标**回到原值**（`400..661 / 668..928`，跨度 528）⇒ 漂移随「游戏占着 scene」开关，不是手抖、不是追踪漂移。
-- **关键改判（推翻「模型挂接矩阵」这条主线）**：同一个静态姿势下，用 `VRApplication_Background` 探针（`temp/driver/pose_matrix_probe.py`）读 `getDeviceToAbsoluteTrackingPose`：
+- **关键改判（推翻「模型挂接矩阵」这条主线）**：同一个静态姿势下，用 `VRApplication_Background` 探针（一次性脚本，不入库）读 `getDeviceToAbsoluteTrackingPose`：
   - 正常：L `(+0.03608,+0.60136,-0.27770)`、R `(+0.10133,+0.59220,-0.26753)`
   - 游戏加载中：L `(+0.07864,+0.60547,-0.27497)`、R `(+0.06079,+0.59870,-0.25529)`
   - 每只手位移 **4.28cm**；换算到**手柄自身坐标系**是 `(±0.0099, +0.0115, -0.0401)`，同时姿态整体转了 **10.29°**（转轴在自身系里 ≈ `(0,-0.096,+0.994)`，即沿柄身轴 + 一点 Y）；左右手镜像对称。
   - **头显位姿完全不变**（`+0.07053/+0.71034/+0.13816` → `+0.07077/+0.71035/+0.13802`）⇒ 不是 universe origin 平移，是**逐设备**的位姿修正。
   - 杀游戏后再读，数值**逐位回到**正常值 ⇒ 是一个确定性的固定刚体变换，不是噪声。
 - ⇒ **模型本身没动，是喂给渲染器的位姿动了**。这解释了为什么所有资源侧改法（`body`/`handgrip` 原点归零、换模型名、补组件、平移 OBJ）都没用：它们改的是几何，而错在 pose。历史上的「9.7cm = `handgrip` 偏移」是**数值巧合**；真实每手漂移是 4.28cm，两只手柄相对位置偏 8.6cm，正好对应 `528→400px`。
-- **触发条件不是「声明 oculus 绑定」**：自制 Scene app 用 oculus-only manifest（`temp/driver/scene_standby_sim_probe.py`，日志确认 `[Simulation] ... oculus_touch`、`type=oculus_touch`）占着 scene 时，位姿**逐位不变**、镜像里也不漂。⇒ 真 Steam 游戏（有 appid / vrmanifest、走 `vrclient_x64.dll`）还做了别的事才会触发这段修正。这是当时下一个要定位的点（下文「根因与修法」已定位：`apprun` 标志）。
+- **触发条件不是「声明 oculus 绑定」**：自制 Scene app 用 oculus-only manifest（一次性脚本，不入库；日志确认 `[Simulation] ... oculus_touch`、`type=oculus_touch`）占着 scene 时，位姿**逐位不变**、镜像里也不漂。⇒ 真 Steam 游戏（有 appid / vrmanifest、走 `vrclient_x64.dll`）还做了别的事才会触发这段修正。这是当时下一个要定位的点（下文「根因与修法」已定位：`apprun` 标志）。
 - **日志侧已定位到「兼容/重映射」这条链**（`Steam\logs\vrserver.txt`）：`steam.app.546560` 连接后立刻出现
   - `[Input] steam.app.546560 (pico_controller) attempting to load default config from .../hlvr/cfg/bindings_touch.json`（Alyx 自己的 **oculus_touch** 绑定）
   - `[Remapping] Beginning remapping from controller type: oculus_touch to controller type: pico_controller` → 成功
@@ -167,12 +167,12 @@ Scene app 占场景时，两只手柄的**设备位姿**各偏一段——自身
 
 **取证**
 
-- **免游戏复现**：`IVRApplications::identifyApplication(pid, "steam.app.<已安装id>")` 把空进程挂到某个已安装 Steam 应用上，约 2 秒内进入漂移，进程退出即恢复（`temp/driver/drift_hold.py`）。换 `openvr.tool.steamvr_room_setup` 这类工具 key 不触发 ⇒ 只有被当成「Steam 游戏」才偏。
+- **免游戏复现**：`IVRApplications::identifyApplication(pid, "steam.app.<已安装id>")` 把空进程挂到某个已安装 Steam 应用上，约 2 秒内进入漂移，进程退出即恢复。换 `openvr.tool.steamvr_room_setup` 这类工具 key 不触发 ⇒ 只有被当成「Steam 游戏」才偏。
 - **发布函数入口/出口成对取值**：输入 `(+1.01164,+0.55034,+1.08921)` 两态**一字不差**，写出的 `vPosition` 不同（`+0.97067,…` vs `+0.92877,…`），而出口值就是客户端读到的值 ⇒ 偏移由驱动产生，vrserver 只转发。
 - **整个 `.data`（10.7 KB）两态只差两处**，其一是 `0x9B080`（0→1）。
 - **闭环**：漂移态下每 5 ms 把该标志写 0，位姿立刻回到基线（`+0.90857/+0.97067`），停止写入又回漂移。
 
-**修法**：`patch_driver.ps1` 把写标志前的 `call atoi` 换成 `xor eax, eax`（零长度变化）⇒ 标志恒 0。验证：identify 测试 **4.28 cm → 0.04 cm**；The Lab 运行中位姿保持基线、两只模型分开（`temp/driver/fixed_thelab.png`）。
+**修法**：`patch_driver.ps1` 把写标志前的 `call atoi` 换成 `xor eax, eax`（零长度变化）⇒ 标志恒 0。验证：identify 测试 **4.28 cm → 0.04 cm**；The Lab 运行中位姿保持基线、两只模型分开。
 
 ## 已排除（都有数值或 A/B 证据，别再试）
 

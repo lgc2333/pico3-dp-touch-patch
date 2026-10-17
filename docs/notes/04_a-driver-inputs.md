@@ -52,7 +52,7 @@ profile 按 `controllertype` 二选一（`GetPrivateProfileIntW("PICO","controll
 
 - ⚠️ **这个实验不能归因到 profile 那一行**：改完后 Home 的日志里仍然是 `[Input] Loaded input profile for simulated controller type: oculus_touch`；DP legacy binding 自己就带 `simulate_rendermodel=true` 和 `simulated_controller_type=oculus_touch`，所以不能只把原因归给 SteamVR 的兜底 remapping。
 - 当前只缺真实游戏画面对照：OpenVR 属性层已经确认 `simulate_rendermodel=false` 不会自动去掉 Oculus 兼容身份，而 `simulated_controller_type=none` 会去掉它。由于 `none` 会改变 Alyx 的绑定身份，不能直接作为补丁方案；`patch_driver.ps1` 仍不碰这两个兼容选项。
-- 用户 2026-10-17 决定：**先不追**（手型差异无伤大雅），偏移另行调查。`patch_driver.ps1` **不**碰这一行；本机实验后已用 `restore_compat_type.ps1` 还原（该行缩进目前是 4 空格而非厂商的 2 空格，JSON 等价，下次打补丁时可顺手对齐）。
+- 用户 2026-10-17 决定：**先不追**（手型差异无伤大雅），偏移另行调查。`patch_driver.ps1` **不**碰这一行；本机实验后已用一次性脚本把那一行改回（该行缩进目前是 4 空格而非厂商的 2 空格，JSON 等价，下次打补丁时可顺手对齐）。
 
 ## 头显 profile 漏发（已修）
 
