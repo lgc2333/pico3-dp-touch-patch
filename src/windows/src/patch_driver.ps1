@@ -311,7 +311,6 @@ foreach ($p in $man.patches) {
     if ($got -ne $p.new) { DieVerify "挂钩点 0x$('{0:X}' -f [int]$p.rva) 不对" }
 }
 Write-Host '[+] 复核通过。重启 SteamVR 后生效。' -ForegroundColor Green
-Write-Host '[i] 还原：把同名 .orig 覆盖回去（driver_pico.dll / RVRPlugin.ini / profile / rendermodels\*.json / rendermodels\*\*.obj 都有）。'
 
 # --- 顺手修 profile 里的 application_menu 笔误（见文件头；纯 JSON 文本，DLL 不读它）---
 $prof = Join-Path (Split-Path (Split-Path (Split-Path $dll -Parent) -Parent) -Parent) 'resources\input\pico_controller_profile.json'
@@ -604,4 +603,11 @@ else {
     try { $null = [System.IO.File]::ReadAllText($hmdProf) | ConvertFrom-Json } catch { Die "$(Split-Path $hmdProf -Leaf) 写坏了（不是合法 JSON）" }
     Write-Host '[+] 已补上 input\pico_hmd_profile.json（驱动不再报 profile 缺失，头显也不再被模拟成 Rift）' -ForegroundColor Green
 }
+
+Write-Host '[i] 还原：把同名 .orig 覆盖回去'
+Write-Host '      · driver_pico.dll'
+Write-Host '      · RVRPlugin.ini'
+Write-Host '      · profile'
+Write-Host '      · rendermodels\*.json'
+Write-Host '      · rendermodels\*\*.obj'
 
