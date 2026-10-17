@@ -1,5 +1,7 @@
 # PICO Neo 3 Pro · DP 直连手柄电容触摸修复
 
+**简体中文** · [English](README.en.md)
+
 > 用 DP 线串流时，手柄的「电容触摸」在 SteamVR 里失效；这个工具把它修回来。
 
 [介绍&教程视频（bilibili）](https://www.bilibili.com/video/BV1kjpA6BEwB)
@@ -16,6 +18,15 @@ A/B/X/Y、扳机、摇杆顶，六处触摸全部正常；游戏里的**手指**
 
 - 头显侧只改内存，**重启失效** ⇒ 每次开机重跑一次；
 - PC 侧只在驱动自带的几个文件上打补丁，可一键还原。
+
+## 本补丁另外修的东西
+
+除触摸位之外，驱动补丁还顺手修了几处厂商遗留的问题，并补了一项 DP 版从没给过的数据（都只动驱动自带的文件、改前自动备份；细节见 [`docs/notes/04-driver.md`](docs/notes/04-driver.md)）：
+
+- **menu 键在 SteamVR 里没反应** —— 输入 profile 里 `/input/application_menu` 少了个斜杠，SteamVR 不认这条声明；
+- 手柄模型 `tip` 组件的角度笔误（只有 DP 这一份错）；
+- 驱动**每次启动都报「读取 profile 失败」** —— 厂商漏发了头显 profile `pico_hmd_profile.json`；
+- **游戏里的手指动画** —— 补出 `/pose/raw` 与 `/skeleton/*`，Alyx 这类游戏的手指才会动。
 
 ## 适用条件
 
@@ -39,13 +50,11 @@ PC 上装不装 adb 都行 —— 没装的话脚本会自己下载到 `src\wind
 
 ### 1. 给 PC 驱动打补丁（一次性）
 
-> 只想恢复 A/B/X/Y、不需要扳机与摇杆顶的触摸？这一步可以跳过。
+> 只想恢复 A/B/X/Y、不需要扳机与摇杆顶的触摸？这一步可以跳过 —— 但「本补丁另外修的东西」也就没了。
 
 1. **完全退出** SteamVR、Business Streaming DP 和 **Steam 客户端**（Steam 会占着驱动文件）；
 2. 双击 `src\windows\patch_driver.bat`，在 UAC 弹窗点「是」。
-   脚本自己找驱动、先备份再改、改完复核；找不到就直接问你要路径（或加参数 `-Dll <DLL路径>`）；
-3. 顺手补齐厂商漏掉/写错的几处资源：**menu 键在 SteamVR 里没反应**、手柄模型里 `tip` 的一处角度笔误、**头显 profile 漏发**（驱动每次启动都报错）。都只改文本文件，细节见 [`docs/notes/04-driver.md`](docs/notes/04-driver.md)。
-4. 同一步还会补上**手指动作**（手指搭在按键/扳机/摇杆顶上时，游戏里的手也跟着动）。机制见 [`docs/notes/04-driver.md`](docs/notes/04-driver.md)。
+   脚本自己找驱动、先备份再改、改完复核；找不到就直接问你要路径（或加参数 `-Dll <DLL路径>`）。
 
 ### 2. 头显每次开机：注入头显
 
@@ -124,3 +133,5 @@ flowchart LR
 ## 免责声明
 
 本项目涉及**内核提权**与**修改厂商驱动二进制**，仅供研究与个人设备修复使用。请自行评估风险；因使用本工具导致的设备损坏、数据丢失或保修失效，作者不承担责任。
+
+**简体中文** · [English](README.en.md)
