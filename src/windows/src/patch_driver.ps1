@@ -12,15 +12,19 @@ patch_driver.ps1 —— 给 PICO DP 驱动打补丁
     每帧更新器）加上两段跳板；本脚本把它作为一个新段塞进 DLL，再把「建组件」和「输入更新」两处改成
     跳进跳板。算法、位映射、为什么这么搬：见 docs/notes/04-driver.md。
 
+改动 C（零长度变化）：**修掉「游戏里手柄偏 ~4cm / 10°」**
+    PC 侧 host 检测到 Steam 游戏启动后，会通过本机 socket 反复给驱动发 `apprun <n>`；驱动用 atoi
+    存进 dword_18009B080，发布手柄位姿时读这个标志，于是游戏态的手柄位姿被额外偏了一段。
+    把这次 atoi 调用换成 `xor eax, eax`，标志恒 0，游戏里的位姿与桌面/待机一致。
+    实测：补完用真游戏（The Lab）验证，模型不再并到一起。详见 docs/notes/04-driver.md。
+
 顺手修 profile：`resources\input\pico_controller_profile.json` 里的 `"input/application_menu"` 少一个 `/`，
     这条声明不生效 ⇒ menu 键在 SteamVR 里没反应；补成 `"/input/application_menu"`（实测补完 menu / system 键都正常）。
     只改 JSON 文本，DLL 不读这个文件；备份为同名 `.orig`。
 
 顺手修渲染模型：`resources\rendermodels\*\*.json` 里 `tip` 的角度笔误改回 `-1.282`
     （UW / v2 / neo2 都是这个值；DP 那份写成了 `-21.282,3,0`）。每个文件备份为同名 `.orig`。
-    游戏里手柄偏 ≈9cm 的事不在这里：几何本身是对的（SteamVR 菜单就是同一份几何、位置正确），
-    偏的是 app 那套「把我当 Oculus」的特判；试过的几条（补 `grip`/`aim` 组件、平移几何、镜像补右手网格、
-    换模型名）都已回滚，实测记录见 docs/notes/04-driver.md。
+    游戏里手柄偏的是「app 位姿」那条路，由改动 C 修；与这里的几何无关（SteamVR 菜单与游戏用的是同一份几何）。
 
 补厂商漏发的 input profile：`resources\input\pico_hmd_profile.json`（驱动每次启动都在找这个文件，
     找不到就报 `Failed to load input profile`）。新版 UW 驱动自带这份，内容照抄，只去掉 DP 里不存在的图标引用。
@@ -151,7 +155,8 @@ $patch = @(
     @{ off = 0x18bb8; old = '0F57DB410F95C0'; new = '4188F04180E020'; what = 'trigger/touch  <- bit5' },
     @{ off = 0x18c6f; old = '740C'; new = 'EB0C'; what = 'kTriggerTouch 打印 <- 恒跳过' },
     @{ off = 0x18d1d; old = '0F57DB'; new = '4188F0'; what = 'joystick/touch <- bit7 (mov)' },
-    @{ off = 0x18d27; old = '450FB6C7'; new = '4180E080'; what = 'joystick/touch <- bit7 (and)' }
+    @{ off = 0x18d27; old = '450FB6C7'; new = '4180E080'; what = 'joystick/touch <- bit7 (and)' },
+    @{ off = 0x2c896; old = 'E839B60200'; new = '31C0909090'; what = 'apprun 位姿偏移 <- 恒 0（游戏里手柄偏 4cm/10°）' }
 )
 
 foreach ($p in $patch) {

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-PICO Neo 3 Pro（企业版）在「Business Streaming DP 直连」下补回手柄电容触摸：头显端 Frida hook + PC 驱动补丁。面向用户的说明在 `README.md`；完整逆向记录在 `docs/`。
+PICO Neo 3 Pro（企业版）在「Business Streaming DP 直连」下补回手柄电容触摸：头显端 Frida hook + PC 驱动补丁。面向用户的说明在 `README.md`（中文）/ `README.en.md`（英文，与前者逐节同步）；完整逆向记录在 `docs/`。
 
 ## Structure
 
@@ -12,8 +12,8 @@ src/
       _utils.ps1      公用：仓库路径、找/补 adb.exe、拉依赖、认/连头显、装 Termux kit（被下面几个点源）
       pico_touch.ps1  一键：找头显 → 无线 adb → picohaxx 提权 → 推送 → 设备端注入
       push.ps1        只推文件：设备端三件套 + Termux 要用的（不提权、不注入）
-      downgrade_streaming.ps1 头显端企业串流换版本：校验 sha256 的 APK → `adb uninstall` 卸用户态更新 → `adb install -r -d` → 读回 versionName/flags；PC 端安装包问过才下
-      patch_driver.ps1 驱动补丁（自己定位 DLL：注册表/OpenVR/问用户；未提权自己弹 UAC）；改 DLL 两处：15 字节的触摸位补丁 + 新增 `.pitouch` 段（把 v2 的骨架实现整段搬进来，补 `/pose/raw` + `/skeleton/*`，见 `docs/notes/04-driver.md`）；顺手补 profile 里 `input/application_menu` 的斜杠（补完 menu 键才在 SteamVR 里生效）、修 `rendermodels\*.json` 里 `tip` 的角度笔误、补厂商漏发的 `pico_hmd_profile.json`。**游戏里手柄偏 ≈9cm 未解决**：几何/位姿都验过是对的，偏的是 app 对「被冒充成 oculus_touch」的特判，试过的四条（补 grip/aim 组件、平移几何、镜像补右手网格、换模型名）全无效并已回滚，别再重走
+      downgrade_streaming.ps1 头显端企业串流换版本
+      patch_driver.ps1 驱动补丁：触摸位 + `.pitouch` 段（`/pose/raw`、`/skeleton/*`）+ `apprun` 位姿补丁（**游戏里手柄偏 4cm/10° 就靠这条修**，机制见 `docs/notes/04-driver.md`）；细节看脚本文件头
       driver_patch/   骨架 payload（`dp_skeleton_payload.{bin,json}`，**入库**）：从 v2 驱动整段搬来的机器码 + 清单，patch_driver.ps1 直接用（离线）；缺失就直接中止（重新生成跑 `docs/notes/artifacts/build_dp_skeleton_payload.py`）
       get_deps.ps1    从上游拉 frida-inject / picohaxx（并打 Neo 3 补丁）/ platform-tools（-PlatformTools）
     temp/             运行期缓存：依赖二进制、`.headset_ip`（整目录被 .gitignore 忽略）
@@ -26,7 +26,7 @@ src/
 scripts/              仓库工具（不被脚本运行期依赖）
   format_ps.ps1       按本仓库约定格式化 .ps1（默认风格 + 行尾注释 2 空格 + 文件头只判定只警告）
 docs/notes/           逆向笔记 01 → 09（设备 / HID 协议 / 链路 / 驱动 / 注入 / root / 工具 / 死路 / Termux）
-  artifacts/          笔记引用的分析脚本：`build_dp_skeleton_payload.py`（手动重建骨架 payload 用）、`dp_skeleton_payload_test.py`（重定位 + Unicorn 差分）、`dp_skeleton_image_test.py`（打完补丁的整镜像）
+  artifacts/          笔记引用的分析脚本：骨架 payload 构建/测试、app 骨架探针（`app_skeleton_probe.py`）、更新器钩子（`hook_updater.py`）；一次性探针用完就删，别攒死路脚本
 temp/                 本地工作区（安装了原始材料）；`src/*/temp/` 是各脚本的运行期缓存（依赖二进制、`.headset_ip`）。两级都靠 `temp/` 一条规则忽略
 ```
 
@@ -119,9 +119,9 @@ adb shell 'ls -la /data/data/com.termux/files/home/pico_touch; ls -l /data/data/
 
 ### 改动连带面
 
-- `README.md` 是**面向用户**的：只写用户看得见的影响（能做什么、要准备什么、怎么还原），除「原理」一节外不写用户看不懂的内容，**保持简短**；机制、偏移、验证一律进 `docs/notes/`。
-- 改脚本行为或路径 → 同步 `README.md`、本文件与相关 notes；运行期提示语以 README 为唯一权威，别在多处各抄一份。
-- 驱动补丁的字节数只在 `docs/notes/04-driver.md` 记一次 —— `README.md`、本文件与其它 notes 一律不写数字，省得每次动补丁都要全仓库同步。
+- `README.md`（中文）与 `README.en.md`（英文）是**面向用户**的：只写用户看得见的影响（能做什么、要准备什么、怎么还原），除「原理」一节外不写用户看不懂的内容，**保持简短**；机制、偏移、验证一律进 `docs/notes/`。两份**逐节对应**，改一份必改另一份（两份首尾各有一行语言切换）。
+- 改脚本行为或路径 → 同步两份 README、本文件与相关 notes；运行期提示语以 README 为唯一权威，别在多处各抄一份。
+- 驱动补丁的字节数只在 `docs/notes/04-driver.md` 记一次 —— 两份 README、本文件与其它 notes 一律不写数字，省得每次动补丁都要全仓库同步。
 - 文档分三层：**实测 / 推测 / 设计选择** —— 别把「我们没这么做」写成「做不到」（翻过车：app 域直跑 + `settings` 垫片其实可行）；结论变了要把旧说法一起改掉。
 - 用户当场纠正的事实：**同一轮**里改到位 —— 不只改被点名那一句，同源处（脚本提示、README、本文件、notes）一起扫掉。
 

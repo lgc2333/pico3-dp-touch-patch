@@ -26,7 +26,8 @@ Besides the touch bits, the driver patch also repairs a few things the vendor sh
 - **The menu button does nothing in SteamVR** — the input profile declares `/input/application_menu` without a leading slash, so SteamVR ignores it;
 - an angle typo in the controller model's `tip` component (only the DP build has it);
 - the driver **fails to load the headset profile and logs an error on every start** — the vendor never shipped `pico_hmd_profile.json`;
-- **finger animation in games** — `/pose/raw` and `/skeleton/*` are filled in, which is what games such as Alyx need for the fingers to move.
+- **finger animation in games** — `/pose/raw` and `/skeleton/*` are filled in, which is what games such as Alyx need for the fingers to move;
+- **controller models sitting ~4 cm off (and slightly tilted) in games** — the streaming app tells the driver that a game started via an `apprun` message, and the driver adds a pose offset on top of it; the patch makes the driver ignore that message, so the in-game controller pose matches the SteamVR menu / standby one.
 
 ## Requirements
 
@@ -98,7 +99,6 @@ SteamVR → Settings → Controllers → **Test Controllers**: rest a finger on 
 - **Any risk of bricking the headset?** The headset side only patches memory; the PC side only edits text files the driver ships with plus one DLL, and backs them up automatically.
 - **Can I unplug the cable after injection?** Yes. The injection runs locally on the headset.
 - **Will it still work after a firmware update?** Not necessarily; it has to be re-adapted, see [`docs/notes/06-root.md`](docs/notes/06-root.md).
-- **Controller models sit ~9 cm off in games?** Known issue, **unresolved**: positions are correct in the SteamVR menu but off in games; the cause and the ruled-out fixes are in [`docs/notes/04-driver.md`](docs/notes/04-driver.md).
 
 ## How it works (skippable)
 
