@@ -142,7 +142,7 @@ G="D:/Programs/ghidra_12.1.4_PUBLIC/support/analyzeHeadless.bat"
 
 24. **观测 OpenVR 状态必须用 `VRApplication_Scene(2)`**：
     `Background(3)` / `Overlay(4)` 下 `GetControllerState` 恒返回 false
-25. 不能用 `GetControllerState` 的 T 位当端到端证据（它跟随模拟量，见 `04`）
+25. 不能用 `GetControllerState` 的 T 位当端到端证据（它跟随模拟量，见 `04.b`）
 26. HID 输入报文会**广播**给所有已打开的句柄 ⇒ 驱动在跑也能同时抓包
 27. MSYS bash 里 `while read` / herestring 容易出 `os error 87`，用简单命令
 28. 本机直连 reddit / r.jina.ai 不通；`raw.githubusercontent.com` 时通时不通，`ghfast.top` 镜像可用

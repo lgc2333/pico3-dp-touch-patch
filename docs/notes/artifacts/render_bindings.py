@@ -2,7 +2,7 @@
 
 SteamVR draws the "test controller" highlight boxes at those coordinates, so this is how
 you check whether a driver's preset actually lines up with its own binding UI image
-(see docs/notes/04-driver.md, "输入声明层").
+(see docs/notes/04_a-driver-inputs.md, "输入声明层").
 
 Usage:
     uv run --with svglib --with reportlab --with rlPyCairo --with pycairo \

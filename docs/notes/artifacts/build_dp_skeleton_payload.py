@@ -10,7 +10,7 @@
   * the `.rdata` constants that cluster reads (not relocated by identity, copied);
   * two stubs: one that creates the `/input/skeleton/{left,right}` components,
     one that feeds the updater from the DP input-update path (it also translates
-    the DP 16-bit key word into the v2 mask layout, see docs/notes/04-driver.md);
+    the DP 16-bit key word into the v2 mask layout, see docs/notes/04_d-driver-skeleton.md);
   * an `acosf` implementation (DP statically links a CRT without `acosf`);
   * per-hand state: the component handles and the updater's scratch block.
 
@@ -396,7 +396,7 @@ def build(v2_path, out_bin, out_json):
     # CreateSkeletonComponent's eSkeletalTrackingLevel.  v2 passes Full on the path
     # that drives the skeleton itself; with Estimated applications treat the poses
     # as guesses and pose the fingers from the touch/click components instead
-    # (docs/notes/04-driver.md).
+    # (docs/notes/04_d-driver-skeleton.md).
     create_tmpl = f"""
 create_stub:
     push rax
@@ -485,7 +485,7 @@ create_stub:
     # v2 numbers the hands 1 = left / 2 = right and its updater only tests `== 1`;
     # the DP controller object carries 0 = left / 1 = right, so the index has to be
     # shifted up -- otherwise both hands get the other hand's mirrored pose, which
-    # also makes the runtime read every finger backwards (docs/notes/04-driver.md).
+    # also makes the runtime read every finger backwards (docs/notes/04_d-driver-skeleton.md).
     update_tmpl = f"""
 update_stub:
     pushfq

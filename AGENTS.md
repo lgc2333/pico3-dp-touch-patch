@@ -13,7 +13,7 @@ src/
       pico_touch.ps1  一键：找头显 → 无线 adb → picohaxx 提权 → 推送 → 设备端注入
       push.ps1        只推文件：设备端三件套 + Termux 要用的（不提权、不注入）
       downgrade_streaming.ps1 头显端企业串流换版本
-      patch_driver.ps1 驱动补丁：触摸位 + `.pitouch` 段（`/pose/raw`、`/skeleton/*`）+ `apprun` 位姿补丁（**游戏里手柄偏 4cm/10° 就靠这条修**，机制见 `docs/notes/04-driver.md`）；细节看脚本文件头
+      patch_driver.ps1 驱动补丁：触摸位 + `.pitouch` 段（`/pose/raw`、`/skeleton/*`）+ `apprun` 位姿补丁（**游戏里手柄偏 4cm/10° 就靠这条修**，机制见 `docs/notes/04-driver.md` 总览与 `04_a`–`04_e` 子篇）；细节看脚本文件头
       driver_patch/   骨架 payload（`dp_skeleton_payload.{bin,json}`，**入库**）：从 v2 驱动整段搬来的机器码 + 清单，patch_driver.ps1 直接用（离线）；缺失就直接中止（重新生成跑 `docs/notes/artifacts/build_dp_skeleton_payload.py`）
       get_deps.ps1    从上游拉 frida-inject / picohaxx（并打 Neo 3 补丁）/ platform-tools（-PlatformTools）
     temp/             运行期缓存：依赖二进制、`.headset_ip`（整目录被 .gitignore 忽略）
@@ -25,7 +25,7 @@ src/
     start_touch.sh    幂等启动（检查 /proc/<pid>/maps 是否已有 frida-agent）
 scripts/              仓库工具（不被脚本运行期依赖）
   format_ps.ps1       按本仓库约定格式化 .ps1（默认风格 + 行尾注释 2 空格 + 文件头只判定只警告）
-docs/notes/           逆向笔记 01 → 09（设备 / HID 协议 / 链路 / 驱动 / 注入 / root / 工具 / 死路 / Termux）
+docs/notes/           逆向笔记 01 → 09（设备 / HID 协议 / 链路 / 驱动 `04-driver.md` + `04_a`–`04_e` / 注入 / root / 工具 / 死路 / Termux）
   artifacts/          笔记引用的分析脚本：骨架 payload 构建/测试、app 骨架探针（`app_skeleton_probe.py`）、更新器钩子（`hook_updater.py`）；一次性探针用完就删，别攒死路脚本
 temp/                 本地工作区（安装了原始材料）；`src/*/temp/` 是各脚本的运行期缓存（依赖二进制、`.headset_ip`）。两级都靠 `temp/` 一条规则忽略
 ```
@@ -114,14 +114,14 @@ adb shell 'ls -la /data/data/com.termux/files/home/pico_touch; ls -l /data/data/
 - 驱动补丁只对 md5 `9017439d560747678b4550fcf6726808` 的 `driver_pico.dll` 有效；写入前必须校验原字节，失败即中止。
 - 骨架 payload 只对 v2 的 `driver_pico.dll`（sha256 `d851b7d1…`）有效，且段 RVA 固定 = DP 的 `SizeOfImage`（`0xAB000`）；`docs/notes/artifacts/build_dp_skeleton_payload.py` 卡源 DLL 的 sha256，`patch_driver.ps1` 卡段数 / `SizeOfImage` / 段表 / 两个挂钩点原字节，任一不符即中止 —— 别放宽这几处。
 - 固件版本决定 `picohaxx` 的内核符号偏移；换固件须重取符号（见 `docs/notes/06-root.md`），不要假设偏移通用。
-- **从 v2 抄常量 / 分支前先确认自己落在哪个「型号 × 形态」上**：v2 支持 Neo2 / Neo3 / PICO4 / 4S 四种控制器，每种还有「手柄 / 手部追踪（设备自称 `Pico Hand`）」两种形态，同一个标志位常常同时决定设备身份和驱动行为（例：`*(this+0x2E0)` 既是"手部追踪版"、又决定 `eSkeletalTrackingLevel` 取 0 还是 2；手序号 v2 用 1/2 而 DP 用 0/1）。矩阵与踩坑记录见 `docs/notes/04-driver.md` 的「移植前必读」；移植前问三句：这段在哪个型号分支？这个标志位还有别的用途吗？我们（DP / Neo 3 / 手柄形态）落在哪一支？
+- **从 v2 抄常量 / 分支前先确认自己落在哪个「型号 × 形态」上**：v2 支持 Neo2 / Neo3 / PICO4 / 4S 四种控制器，每种还有「手柄 / 手部追踪（设备自称 `Pico Hand`）」两种形态，同一个标志位常常同时决定设备身份和驱动行为（例：`*(this+0x2E0)` 既是"手部追踪版"、又决定 `eSkeletalTrackingLevel` 取 0 还是 2；手序号 v2 用 1/2 而 DP 用 0/1）。矩阵与踩坑记录见 `docs/notes/04-driver.md` 的「v2 移植约定」；移植前问三句：这段在哪个型号分支？这个标志位还有别的用途吗？我们（DP / Neo 3 / 手柄形态）落在哪一支？
 - `downgrade_streaming.ps1` 的两个上游产物（头显端 APK、PC 端安装包）必须保持 sha256 逐字节校验：`URL` 与 `Sha` 成对改，任一不符即中止（缓存里的也要每次重算）。
 
 ### 改动连带面
 
 - `README.md`（中文）与 `README.en.md`（英文）是**面向用户**的：只写用户看得见的影响（能做什么、要准备什么、怎么还原），除「原理」一节外不写用户看不懂的内容，**保持简短**；机制、偏移、验证一律进 `docs/notes/`。两份**逐节对应**，改一份必改另一份（两份首尾各有一行语言切换）。
 - 改脚本行为或路径 → 同步两份 README、本文件与相关 notes；运行期提示语以 README 为唯一权威，别在多处各抄一份。
-- 驱动补丁的字节数只在 `docs/notes/04-driver.md` 记一次 —— 两份 README、本文件与其它 notes 一律不写数字，省得每次动补丁都要全仓库同步。
+- 驱动补丁的字节数只在 `docs/notes/04_c-driver-touch-patch.md` 与 `04_d-driver-skeleton.md` 各记一次 —— 两份 README、本文件与其它 notes 一律不写数字，省得每次动补丁都要全仓库同步。
 - 文档分三层：**实测 / 推测 / 设计选择** —— 别把「我们没这么做」写成「做不到」（翻过车：app 域直跑 + `settings` 垫片其实可行）；结论变了要把旧说法一起改掉。
 - 用户当场纠正的事实：**同一轮**里改到位 —— 不只改被点名那一句，同源处（脚本提示、README、本文件、notes）一起扫掉。
 

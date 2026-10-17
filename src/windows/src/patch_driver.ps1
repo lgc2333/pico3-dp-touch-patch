@@ -4,19 +4,19 @@ patch_driver.ps1 —— 给 PICO DP 驱动打补丁
 改动 A（零长度变化）：
     /input/trigger/touch   ← 键值字 bit5   (原: 扳机模拟量 != 0)
     /input/joystick/touch  ← 键值字 bit7   (原: 摇杆偏离中位)
-    kTriggerTouch 调试打印 ← 恒跳过        (厂商遗留：拉扳机时以 ~200 Hz 刷 SteamVR Console；见 docs/notes/04-driver.md)
+    kTriggerTouch 调试打印 ← 恒跳过        (厂商遗留：拉扳机时以 ~200 Hz 刷 SteamVR Console；见 docs/notes/04_c-driver-touch-patch.md)
 
 改动 B（新增一个 PE 段 .pitouch，DLL 变大 ~63 KB）：
     补上 DP 驱动缺的 pose/raw + skeleton 输出（Alyx 的手指动画走 skeleton，不是 capsense 绑定）。
     `driver_patch\dp_skeleton_payload.bin` 是从 v2 驱动整段搬来的骨架代码（生成器 + 姿势表 + slerp +
     每帧更新器）加上两段跳板；本脚本把它作为一个新段塞进 DLL，再把「建组件」和「输入更新」两处改成
-    跳进跳板。算法、位映射、为什么这么搬：见 docs/notes/04-driver.md。
+    跳进跳板。算法、位映射、为什么这么搬：见 docs/notes/04_d-driver-skeleton.md。
 
 改动 C（零长度变化）：**修掉「游戏里手柄偏 ~4cm / 10°」**
     PC 侧 host 检测到 Steam 游戏启动后，会通过本机 socket 反复给驱动发 `apprun <n>`；驱动用 atoi
     存进 dword_18009B080，发布手柄位姿时读这个标志，于是游戏态的手柄位姿被额外偏了一段。
     把这次 atoi 调用换成 `xor eax, eax`，标志恒 0，游戏里的位姿与桌面/待机一致。
-    实测：补完用真游戏（The Lab）验证，模型不再并到一起。详见 docs/notes/04-driver.md。
+    实测：补完用真游戏（The Lab）验证，模型不再并到一起。详见 docs/notes/04_e-driver-offset.md。
 
 顺手修 profile：`resources\input\pico_controller_profile.json` 里的 `"input/application_menu"` 少一个 `/`，
     这条声明不生效 ⇒ menu 键在 SteamVR 里没反应；补成 `"/input/application_menu"`（实测补完 menu / system 键都正常）。
@@ -176,7 +176,7 @@ foreach ($p in $patch) {
     }
 }
 
-# --- 改 B：骨架 / pose 支持（新增 .pitouch 段；见文件头与 docs/notes/04-driver.md）---
+# --- 改 B：骨架 / pose 支持（新增 .pitouch 段；见文件头与 docs/notes/04_d-driver-skeleton.md）---
 # payload 里的绝对地址（段内 + DP 全局）在打包时已按 段 RVA = 原 SizeOfImage 算好，
 # 所以这里先卡死 SizeOfImage，落在别处就中止（版本变了别硬上）。
 function PeU16([byte[]]$Arr, [int]$Off) { return [BitConverter]::ToUInt16($Arr, $Off) }
@@ -339,7 +339,7 @@ else {
 }
 
 # --- 顺手修手柄渲染模型（见文件头；纯 JSON 文本，DLL 不读它）---
-# 只修 tip 的角度笔误：就地改，不从 .orig 重算、不做回滚（见 docs/notes/04-driver.md）。
+# 只修 tip 的角度笔误：就地改，不从 .orig 重算、不做回滚（见 docs/notes/04_e-driver-offset.md）。
 $resRoot = Join-Path (Split-Path (Split-Path (Split-Path $dll -Parent) -Parent) -Parent) 'resources'
 $rmRoot = Join-Path $resRoot 'rendermodels'
 $tipBad = '[-21.282,3.0,0.0]'  # DP 独有；UW / v2 / neo2 都是 -1.282
