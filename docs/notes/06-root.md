@@ -1,7 +1,7 @@
 # 06 · 免解 BL 保数据 root（CVE-2023-33107 / picohaxx）
 
 > 目的：拿到头显 root，**不解 Bootloader、不恢复出厂、不动 userdata**。
-> 工具：`src/windows/temp/picohaxx.neo3.bin`（由 `get_deps.ps1` 自动拉取并打补丁，已适配 Neo 3）。
+> 工具：由 `get_deps.ps1` 自动拉取并打补丁、已适配 Neo 3 的 `picohaxx.neo3.bin` 运行时二进制。
 > 状态：**2026-10-04 已在本机 PICO Neo 3 上实测成功**。
 
 ## ⚠️ 本机没有「原生 adb root」捷径（实测）
