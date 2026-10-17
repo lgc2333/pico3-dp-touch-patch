@@ -510,13 +510,21 @@ function Convert-HandObj {
     return $changed
 }
 
+$handChanged = $false
 foreach ($c in $handCfgs) {
     $n = Convert-HandObj -Cfg $c
-    Write-Host "[+] $($c.Dir)：顶点已反向补偿（$n 个文件）" -ForegroundColor Green
+    if ($n -gt 0) {
+        $handChanged = $true
+        Write-Host "[+] $($c.Dir)：顶点已反向补偿（$n 个文件）" -ForegroundColor Green
+    }
+    else {
+        Write-Host "[=] $($c.Dir)：顶点已是目标值，跳过"
+    }
 }
 
 # ini：把 [controller] 段换成目标值（只动这一段，其它配置原样保留）
 $ini = Join-Path (Split-Path $dll -Parent) 'RVRPlugin.ini'
+$iniChanged = $false
 if (-not (Test-Path -LiteralPath $ini)) {
     Write-Host "[!] 没找到 $ini（换过版本？），跳过 [controller] 偏移" -ForegroundColor Yellow
 }
@@ -550,13 +558,19 @@ else {
     $new = (($out -join $nl).TrimEnd("`r", "`n")) + $nl + ($sec -join $nl) + $nl
     if ([System.IO.File]::ReadAllText($ini, [System.Text.Encoding]::ASCII) -ne $new) {
         [System.IO.File]::WriteAllText($ini, $new, [System.Text.Encoding]::ASCII)
+        $iniChanged = $true
         Write-Host '[+] RVRPlugin.ini：[controller] 偏移已写入' -ForegroundColor Green
     }
     else { Write-Host '[=] RVRPlugin.ini：[controller] 偏移已是最新，跳过' }
     $chk = [System.IO.File]::ReadAllText($ini, [System.Text.Encoding]::ASCII)
     if (-not $chk.Contains('[controller]') -or -not $chk.Contains('leftz=-0.0401')) { Die 'RVRPlugin.ini 复核失败：没写进 [controller] 偏移' }
 }
-Write-Host '[+] 手柄握把位置已修正：虚拟手落在握把上，模型仍和实物对齐' -ForegroundColor Green
+if ($handChanged -or $iniChanged) {
+    Write-Host '[+] 手柄握把位置已修正：虚拟手落在握把上，模型仍和实物对齐' -ForegroundColor Green
+}
+else {
+    Write-Host '[=] 手柄握把位置已经是最新，跳过'
+}
 
 # --- 补厂商漏发的 HMD profile（见文件头）---
 $inRoot = Join-Path $resRoot 'input'
