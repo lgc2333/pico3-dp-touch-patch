@@ -22,6 +22,8 @@ patch_driver.ps1 —— 给 PICO DP 驱动打补丁
     驱动把 device pose 报在跟踪环附近，而 VRChat 这类 app 的虚拟手吃的是同一个 device pose
     ⇒ 手比握把低 ~4cm / 10°。这里把发布的位姿挪到握把点（RVRPlugin.ini 的 [controller] 偏移），
     再把渲染模型顶点做反向平移+旋转（从 .orig 重算），于是手落在握把上、模型仍留在物理位置。
+    活动部件（扳机 / 握把键 / 摇杆 / 按键）的 motion 参数（pivot / center / axis / press_translate）
+    和顶点同处模型空间，必须做同一套逆变换，否则扳机会绕错的支点转（见 04_f）。
     改动 C 的 apprun 是同一件事的「只移位姿、不补模型」版本；本项是它的正解。
     数值、公式、证伪记录：见 docs/notes/04_f-driver-hand-grip.md。
 
@@ -31,6 +33,7 @@ patch_driver.ps1 —— 给 PICO DP 驱动打补丁
 
 顺手修渲染模型：`resources\rendermodels\*\*.json` 里 `tip` 的角度笔误改回 `-1.282`
     （UW / v2 / neo2 都是这个值；DP 那份写成了 `-21.282,3,0`）。每个文件备份为同名 `.orig`。
+    改动 D 的 motion 参数也从同一份 `.orig` 重算，所以这一改合并进手柄阶段、不再单独就地改。
     游戏里手柄偏的是「app 位姿」那条路，由改动 C 修；与这里的几何无关（SteamVR 菜单与游戏用的是同一份几何）。
 
 补厂商漏发的 input profile：`resources\input\pico_hmd_profile.json`（驱动每次启动都在找这个文件，
@@ -344,94 +347,15 @@ else {
     }
 }
 
-# --- 顺手修手柄渲染模型（见文件头；纯 JSON 文本，DLL 不读它）---
-# 只修 tip 的角度笔误：就地改，不从 .orig 重算、不做回滚（见 docs/notes/04_e-driver-offset.md）。
+# --- 改动 D：手柄握把位姿（见文件头与 docs/notes/04_f-driver-hand-grip.md）---
+# 位姿与模型必须成对改：ini 把 device pose 挪到握把点，模型（顶点 + 活动部件 motion）反向补偿留在物理位置。
+# 顶点与 motion 参数都从 .orig 重算；两份 JSON 与 17 个 OBJ 的原始指纹必须匹配（换了版本就中止，别硬移）。
 $resRoot = Join-Path (Split-Path (Split-Path (Split-Path $dll -Parent) -Parent) -Parent) 'resources'
 $rmRoot = Join-Path $resRoot 'rendermodels'
-$tipBad = '[-21.282,3.0,0.0]'  # DP 独有；UW / v2 / neo2 都是 -1.282
-$tipGood = '[-1.282,0.0,0.0]'
-
-# 组件块的首末行号（缩进 ≤8 空格的 `}` 收尾，厂商的 component_local 收尾缩进是乱的）
-function Get-ComponentRange {
-    param([string[]]$Lines, [string]$Name)
-    for ($i = 0; $i -lt $Lines.Count; $i++) {
-        if ($Lines[$i] -notmatch ('^\s*"' + [regex]::Escape($Name) + '"\s*:\s*\{')) { continue }
-        for ($j = $i + 1; $j -lt $Lines.Count; $j++) {
-            if ($Lines[$j] -match '^\s{0,8}\}\s*,?\s*$') { return @($i, $j) }
-        }
-        return @($i, $Lines.Count - 1)
-    }
-    return $null
-}
-
-if (-not (Test-Path -LiteralPath $rmRoot)) {
-    Write-Host "[!] 没找到 $rmRoot（换过版本？），跳过渲染模型修补" -ForegroundColor Yellow
-}
-else {
-    $models = @(Get-ChildItem -LiteralPath $rmRoot -Directory | Where-Object { $_.Name -match '^pico_[a-z0-9_]+_(left|right)controller$' })
-    if (-not $models) { Write-Host '[!] rendermodels 里没有 pico 手柄模型，跳过' -ForegroundColor Yellow }
-    foreach ($m in $models) {
-        $json = Join-Path $m.FullName ($m.Name + '.json')
-        if (-not (Test-Path -LiteralPath $json)) {
-            Write-Host "[!] $($m.Name) 里没有 $(Split-Path $json -Leaf)，跳过" -ForegroundColor Yellow
-            continue
-        }
-        $jorig = "$json.orig"
-        $live = [System.IO.File]::ReadAllText($json)
-        try { $null = $live | ConvertFrom-Json } catch {
-            Write-Host "[!] $(Split-Path $json -Leaf) 不是合法 JSON（厂商原件即如此），跳过" -ForegroundColor Yellow
-            continue
-        }
-        if (-not (Test-Path -LiteralPath $jorig)) {
-            Copy-Item -LiteralPath $json -Destination $jorig -Force
-            Write-Host "[+] 已备份 -> $(Split-Path $jorig -Leaf)"
-        }
-        $text = $live  # 就地改当前文件（不重算、不回滚）
-        $nb = [System.IO.File]::ReadAllBytes($json)
-        $bom = $nb.Length -ge 3 -and $nb[0] -eq 0xEF -and $nb[1] -eq 0xBB -and $nb[2] -eq 0xBF
-        $nl = "`n"
-        if ($text.Contains("`r`n")) { $nl = "`r`n" }
-        $lines = New-Object System.Collections.Generic.List[string]
-        $lines.AddRange([string[]]$text.Split([string[]]@($nl), [System.StringSplitOptions]::None))
-
-        $rt = Get-ComponentRange -Lines $lines.ToArray() -Name 'tip'
-        if (-not $rt) {
-            Write-Host "[!] $(Split-Path $json -Leaf) 缺 tip 组件，跳过" -ForegroundColor Yellow
-            continue
-        }
-
-        $changes = @()
-        for ($i = $rt[0]; $i -le $rt[1]; $i++) {
-            if ($lines[$i] -notmatch '"rotate_xyz"\s*:') { continue }
-            if ($lines[$i].Contains($tipBad)) {
-                $lines[$i] = $lines[$i].Replace($tipBad, $tipGood)
-                $changes += 'tip 角度'
-            }
-            break
-        }
-        $out = ($lines -join $nl)
-        if ([System.IO.File]::ReadAllText($json) -eq $out) {
-            Write-Host "[=] $($m.Name)：已经是目标内容，跳过"
-            continue
-        }
-
-        [System.IO.File]::WriteAllText($json, $out, (New-Object System.Text.UTF8Encoding($bom)))
-
-        # 复核：JSON 仍然合法、笔误已消失
-        $chk = [System.IO.File]::ReadAllText($json)
-        try { $null = $chk | ConvertFrom-Json } catch { Die "$(Split-Path $json -Leaf) 写坏了（不再是合法 JSON）" }
-        if ($chk.Contains($tipBad)) { Die "$(Split-Path $json -Leaf) 复核失败：tip 角度没改掉" }
-        Write-Host "[+] $($m.Name)：$($changes -join ' / ')（备份 $(Split-Path $jorig -Leaf)）" -ForegroundColor Green
-    }
-}
-
-# --- 改动 D：手柄握把位姿（见文件头与 docs/notes/04_f-driver-hand-grip.md）---
-# 位姿与模型必须成对改：ini 把 device pose 挪到握把点，顶点做反向平移+旋转留在物理位置。
-# 顶点从 .orig 重算；17 个原始文件的指纹必须匹配（换了版本就中止，别硬移）。
 $handObjSha = '6a6e82bfda8ac4ad7937905bb8cf2691db51c6e22674ce6ec6afecff110dc208'
 $handCfgs = @(
-    [pscustomobject]@{ Dir = 'pico_neo3_leftcontroller'; Tx = 0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = -0.99; Roll = 10.23 },
-    [pscustomobject]@{ Dir = 'pico_neo3_rightcontroller'; Tx = -0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = 0.99; Roll = -10.23 }
+    [pscustomobject]@{ Dir = 'pico_neo3_leftcontroller'; Tx = 0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = -0.99; Roll = 10.23; JsonSha = 'e76a4b77b0aaa5e1f252085423dde481e8268d9dc666e9ea8457bebb857763bf' },
+    [pscustomobject]@{ Dir = 'pico_neo3_rightcontroller'; Tx = -0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = 0.99; Roll = -10.23; JsonSha = '6dd340dc1babee10b13d0e625f99ab8348f18a17c6480631a6e9e4b489805d2e' }
 )
 $inv = [System.Globalization.CultureInfo]::InvariantCulture
 
@@ -458,12 +382,147 @@ function Get-HandObjSha {
     finally { $ms.Dispose() }
 }
 
-if (-not (Test-Path -LiteralPath $rmRoot)) { Die "找不到 $rmRoot（换过版本？）—— 改动 D 需要它，已中止" }
+if (-not (Test-Path -LiteralPath $rmRoot)) { Die "未找到 $rmRoot。可能换过版本。改动 D 需要它，已中止。" }
 $shaGot = Get-HandObjSha
 if ($shaGot -ne $handObjSha) {
-    Die ("手柄渲染模型不是支持的那版（指纹 {0}，预期 {1}）；先把 rendermodels\pico_neo3_*\*.obj.orig 还原回去再跑（已中止，未写入）" -f $shaGot, $handObjSha)
+    Die ("手柄渲染模型不是支持的版本（指纹 {0}，预期 {1}）。请先把 rendermodels\pico_neo3_* 下的 *.orig 还原。然后重新运行。已中止，未写入。" -f $shaGot, $handObjSha)
 }
 Write-Host '[+] 手柄渲染模型校验通过' -ForegroundColor Green
+
+# motion 参数（pivot / center / axis / press_translate）活在顶点所在的模型空间：
+# 点 p' = R·p - t、向量 v' = R·v（R = Rz(-roll)·Ry(-yaw)，与顶点同源）⇒ 扳机等活动部件才绕对的支点转。
+function Convert-HandXyz {
+    param($Cfg, [double]$X, [double]$Y, [double]$Z, [switch]$Point)
+    $deg = [math]::PI / 180.0
+    $cy = [math]::Cos(-$Cfg.Yaw * $deg); $sy = [math]::Sin(-$Cfg.Yaw * $deg)
+    $cz = [math]::Cos(-$Cfg.Roll * $deg); $sz = [math]::Sin(-$Cfg.Roll * $deg)
+    $x1 = $X * $cy + $Z * $sy
+    $z1 = - $X * $sy + $Z * $cy
+    $x2 = $x1 * $cz - $Y * $sz
+    $y2 = $x1 * $sz + $Y * $cz
+    if ($Point) { $x2 -= $Cfg.Tx; $y2 -= $Cfg.Ty; $z1 -= $Cfg.Tz }
+    return @($x2, $y2, $z1)
+}
+
+function Format-HandXyz([double[]]$V) {
+    $parts = @(foreach ($n in $V) {
+            $r = [math]::Round($n, 6)
+            if ($r -eq 0) { '0' } else { $r.ToString('0.######', $inv) }
+        })
+    return '[' + ($parts -join ', ') + ']'
+}
+
+function Read-HandXyz([string]$Text) {
+    $parts = @($Text.Split(',') | ForEach-Object { [double]::Parse($_.Trim(), $inv) })
+    if ($parts.Count -ne 3) { Die "motion 参数不是三维数组：[$Text]。可能不是支持的版本。" }
+    return $parts
+}
+
+# motion 块可能跨多行；从 `"motion": {` 起按花括号配平找结尾
+function Get-MotionBlockEnd {
+    param([string[]]$Lines, [int]$Start)
+    $depth = 0
+    for ($i = $Start; $i -lt $Lines.Count; $i++) {
+        $depth += ([regex]::Matches($Lines[$i], '\{')).Count
+        $depth -= ([regex]::Matches($Lines[$i], '\}')).Count
+        if ($depth -le 0) { return $i }
+    }
+    return -1
+}
+
+# `.orig` = 脚本动手前那一刻的副本；不是厂商原件（指纹不符）就中止，别硬移
+function Assert-HandJsonOrig {
+    param($Cfg)
+    $json = Join-Path (Join-Path $rmRoot $Cfg.Dir) ($Cfg.Dir + '.json')
+    if (-not (Test-Path -LiteralPath $json)) { Die "未找到 $json。改动 D 需要它，已中止。" }
+    $jorig = "$json.orig"
+    if (-not (Test-Path -LiteralPath $jorig)) {
+        Copy-Item -LiteralPath $json -Destination $jorig -Force
+        Write-Host "[+] 已备份 -> $($Cfg.Dir).json.orig"
+    }
+    $sha = (Get-FileHash -LiteralPath $jorig -Algorithm SHA256).Hash.ToLower()
+    if ($sha -ne $Cfg.JsonSha) {
+        Die ("$($Cfg.Dir).json 的 .orig 不是支持的版本（指纹 {0}，预期 {1}）。请先放回厂商原件。然后重新运行。已中止，未写入。" -f $sha, $Cfg.JsonSha)
+    }
+    return $jorig
+}
+
+# 从 .orig 重算：tip 角度笔误 + motion 参数逆变换（幂等；当前文件已是目标就跳过）
+function Convert-HandJson {
+    param($Cfg)
+    $jorig = Assert-HandJsonOrig -Cfg $Cfg
+    $json = $jorig -replace '\.orig$', ''
+
+    $raw = [System.IO.File]::ReadAllBytes($jorig)
+    $bom = $raw.Length -ge 3 -and $raw[0] -eq 0xEF -and $raw[1] -eq 0xBB -and $raw[2] -eq 0xBF
+    $text = [System.IO.File]::ReadAllText($jorig, [System.Text.Encoding]::UTF8)
+    $nl = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
+    $lines = $text.Split([string[]]@($nl), [System.StringSplitOptions]::None)
+
+    $motions = 0
+    $keys = 0
+    for ($i = 0; $i -lt $lines.Length; $i++) {
+        if ($lines[$i] -notmatch '^\s*"motion"\s*:\s*\{') { continue }
+        $end = Get-MotionBlockEnd -Lines $lines -Start $i
+        if ($end -lt 0) { Die "$($Cfg.Dir).json 的 motion 块不闭合。可能不是支持的版本。" }
+        $motions++
+        for ($j = $i; $j -le $end; $j++) {
+            if ($lines[$j] -match '^(\s*"(pivot|center|axis|press_translate)"\s*:\s*)\[([^\]]*)\](.*)$') {
+                $prefix = $Matches[1]
+                $key = $Matches[2]
+                $v = Read-HandXyz $Matches[3]
+                $suffix = $Matches[4]
+                $nv = Convert-HandXyz -Cfg $Cfg -X $v[0] -Y $v[1] -Z $v[2] -Point:($key -eq 'pivot' -or $key -eq 'center')
+                $lines[$j] = $prefix + (Format-HandXyz $nv) + $suffix
+                $keys++
+            }
+            elseif ($lines[$j] -match '^\s*"rotate_xyz"\s*:\s*\[([^\]]*)\]') {
+                # 活动部件自身的初始朝向；现有模型全为 0，出现非 0 说明版本变了
+                $v = Read-HandXyz $Matches[1]
+                if (@($v | Where-Object { [math]::Abs($_) -gt 1e-9 }).Count -gt 0) {
+                    Die "$($Cfg.Dir).json 的 motion.rotate_xyz 非零。没有对应补偿，已中止。"
+                }
+            }
+        }
+        $i = $end
+    }
+    if ($motions -ne 7 -or $keys -ne 10) {
+        Die ("$($Cfg.Dir).json 的 motion 块数 = {0}，几何参数 = {1}（预期 7/10）。可能不是支持的版本。" -f $motions, $keys)
+    }
+
+    $tipBad = '[-21.282,3.0,0.0]'  # DP 独有；UW / v2 / neo2 都是 -1.282
+    $tipGood = '[-1.282,0.0,0.0]'
+    $tipHit = 0
+    for ($i = 0; $i -lt $lines.Length; $i++) {
+        if (-not $lines[$i].Contains($tipBad)) { continue }
+        $lines[$i] = $lines[$i].Replace($tipBad, $tipGood)
+        $tipHit++
+    }
+    if ($tipHit -ne 1) { Die "$($Cfg.Dir).json 的 tip 角度笔误出现 $tipHit 次（预期 1 次）。可能不是支持的版本。" }
+
+    $out = $lines -join $nl
+    if ([System.IO.File]::ReadAllText($json, [System.Text.Encoding]::UTF8) -eq $out) {
+        Write-Host "[=] $($Cfg.Dir).json：motion 参数已是目标值，跳过"
+        return 0
+    }
+    [System.IO.File]::WriteAllText($json, $out, (New-Object System.Text.UTF8Encoding($bom)))
+
+    # 复核：JSON 仍合法、tip 笔误已消失、扳机支点确实落在补偿后的位置
+    $chk = [System.IO.File]::ReadAllText($json, [System.Text.Encoding]::UTF8)
+    try { $obj = $chk | ConvertFrom-Json } catch { Die "$($Cfg.Dir).json 内容损坏，不再是合法 JSON。" }
+    if ($chk.Contains($tipBad)) { Die "$($Cfg.Dir).json 复核失败：tip 角度未修正。" }
+    try { $got = @($obj.components.trigger.motion.pivot) } catch { Die "$($Cfg.Dir).json 复核失败：未找到 trigger.motion.pivot。" }
+    $want = Convert-HandXyz -Cfg $Cfg -X 0 -Y 0.012 -Z 0.012 -Point
+    for ($k = 0; $k -lt 3; $k++) {
+        if ([math]::Abs([double]$got[$k] - [double]$want[$k]) -gt 1e-6) {
+            Die "$($Cfg.Dir).json 复核失败：扳机支点 = [$($got -join ', ')]。"
+        }
+    }
+    return 1
+}
+
+# 预检两份 JSON 的厂商原件（在动任何文件之前）
+foreach ($c in $handCfgs) { $null = Assert-HandJsonOrig -Cfg $c }
 
 # 备份：`.orig` = 动手前那一刻（这里已验过是支持的那版）
 foreach ($c in $handCfgs) {
@@ -519,8 +578,12 @@ foreach ($c in $handCfgs) {
     else {
         Write-Host "[=] $($c.Dir)：顶点已是目标值，跳过"
     }
+    $jn = Convert-HandJson -Cfg $c
+    if ($jn -gt 0) {
+        $handChanged = $true
+        Write-Host "[+] $($c.Dir).json：扳机等活动部件的支点与轴已反向补偿" -ForegroundColor Green
+    }
 }
-
 # ini：把 [controller] 段换成目标值（只动这一段，其它配置原样保留）
 $ini = Join-Path (Split-Path $dll -Parent) 'RVRPlugin.ini'
 $iniChanged = $false

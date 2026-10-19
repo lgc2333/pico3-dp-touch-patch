@@ -13,7 +13,7 @@ src/
       pico_touch.ps1  一键：找头显 → 无线 adb → picohaxx 提权 → 推送 → 设备端注入
       push.ps1        只推文件：设备端三件套 + Termux 要用的（不提权、不注入）
       downgrade_streaming.ps1 头显端企业串流换版本
-      patch_driver.ps1 驱动补丁：触摸位 + `.pitouch` 段（`/pose/raw`、`/skeleton/*`）+ `apprun` 位姿补丁（**游戏里手柄偏 4cm/10° 就靠这条修**）+ 握把位姿修正（`[controller]` 偏移 + 渲染模型顶点反向补偿；**手不在手心 / 伸不直就靠这条修**）；机制见 `docs/notes/04-driver.md` 总览与 `04_a`–`04_f` 子篇；细节看脚本文件头
+      patch_driver.ps1 驱动补丁：触摸位 + `.pitouch` 段（`/pose/raw`、`/skeleton/*`）+ `apprun` 位姿补丁（**游戏里手柄偏 4cm/10° 就靠这条修**）+ 握把位姿修正（`[controller]` 偏移 + 渲染模型顶点与活动部件 `motion` 参数反向补偿；**手不在手心 / 伸不直就靠这条修**）；机制见 `docs/notes/04-driver.md` 总览与 `04_a`–`04_f` 子篇；细节看脚本文件头
       driver_patch/   骨架 payload（`dp_skeleton_payload.{bin,json}`，**入库**）：从 v2 驱动整段搬来的机器码 + 清单，patch_driver.ps1 直接用（离线）；缺失就直接中止（重新生成跑 `docs/notes/artifacts/build_dp_skeleton_payload.py`）
       get_deps.ps1    从上游拉 frida-inject / picohaxx（并打 Neo 3 补丁）/ platform-tools（-PlatformTools）
     temp/             运行期缓存：依赖二进制、`.headset_ip`（整目录被 .gitignore 忽略）
@@ -112,7 +112,7 @@ adb shell 'ls -la /data/data/com.termux/files/home/pico_touch; ls -l /data/data/
 
 - `get_deps.ps1`（PC 侧唯一的依赖来源）必须保持逐字节校验（上游 md5 + 补丁点原字节），任一不符即中止、不写入。
 - 驱动补丁只对 md5 `9017439d560747678b4550fcf6726808` 的 `driver_pico.dll` 有效；写入前必须校验原字节，失败即中止。
-- 握把补丁的位姿与顶点必须**成对**改：`RVRPlugin.ini` 的 `[controller]` 与 17 个 `pico_neo3_*controller\*.obj` 的 `R·v - t` 是同一组参数；顶点只从 `.orig` 重算，原始 17 个 OBJ 的 sha256 卡在 `patch_driver.ps1`（`$handObjSha`），任一不符即中止 —— 别只改一边、别放宽这个指纹。
+- 握把补丁的位姿与模型必须**成对**改：`RVRPlugin.ini` 的 `[controller]`、17 个 `pico_neo3_*controller\*.obj` 的 `R·v - t`、两份 `pico_neo3_*controller.json` 里 `motion` 的 `pivot/center`（点，`R·p - t`）与 `axis/press_translate`（向量，`R·v`）是同一组参数；顶点与 JSON 都只从 `.orig` 重算，原始 17 个 OBJ 的 sha256（`$handObjSha`）与两份 JSON 的 sha256（`JsonSha`）卡在 `patch_driver.ps1`，任一不符即中止 —— 别只改一边、别放宽这些指纹。
 - 骨架 payload 只对 v2 的 `driver_pico.dll`（sha256 `d851b7d1…`）有效，且段 RVA 固定 = DP 的 `SizeOfImage`（`0xAB000`）；`docs/notes/artifacts/build_dp_skeleton_payload.py` 卡源 DLL 的 sha256，`patch_driver.ps1` 卡段数 / `SizeOfImage` / 段表 / 两个挂钩点原字节，任一不符即中止 —— 别放宽这几处。
 - 固件版本决定 `picohaxx` 的内核符号偏移；换固件须重取符号（见 `docs/notes/06-root.md`），不要假设偏移通用。
 - **从 v2 抄常量 / 分支前先确认自己落在哪个「型号 × 形态」上**：v2 支持 Neo2 / Neo3 / PICO4 / 4S 四种控制器，每种还有「手柄 / 手部追踪（设备自称 `Pico Hand`）」两种形态，同一个标志位常常同时决定设备身份和驱动行为（例：`*(this+0x2E0)` 既是"手部追踪版"、又决定 `eSkeletalTrackingLevel` 取 0 还是 2；手序号 v2 用 1/2 而 DP 用 0/1）。矩阵与踩坑记录见 `docs/notes/04-driver.md` 的「v2 移植约定」；移植前问三句：这段在哪个型号分支？这个标志位还有别的用途吗？我们（DP / Neo 3 / 手柄形态）落在哪一支？
