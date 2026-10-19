@@ -324,8 +324,8 @@ $resRoot = Join-Path (Split-Path (Split-Path (Split-Path $dll -Parent) -Parent) 
 $rmRoot = Join-Path $resRoot 'rendermodels'
 $handObjSha = '6a6e82bfda8ac4ad7937905bb8cf2691db51c6e22674ce6ec6afecff110dc208'
 $handCfgs = @(
-    [pscustomobject]@{ Dir = 'pico_neo3_leftcontroller'; Tx = 0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = -0.99; Roll = 10.23; JsonSha = 'e76a4b77b0aaa5e1f252085423dde481e8268d9dc666e9ea8457bebb857763bf'; JoyCenterOrig = @(0, 0, 0.02); JoyCenter = @(-0.0158132, 0.0240547, 0.0262966); JoyRotateXyz = @(-3.187, -156.680, 161.960); JoyTiltOrig = @(6.5, -6.5); JoyTiltX = @(-12, 12); JoyTiltY = @(12, -12) },
-    [pscustomobject]@{ Dir = 'pico_neo3_rightcontroller'; Tx = -0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = 0.99; Roll = -10.23; JsonSha = '6dd340dc1babee10b13d0e625f99ab8348f18a17c6480631a6e9e4b489805d2e'; JoyCenterOrig = @(0, 0, 0.03); JoyCenter = @(0.0158126, 0.024063, 0.0262877); JoyRotateXyz = @(3.188, -156.715, -161.959); JoyTiltOrig = @(6.5, -6.5); JoyTiltX = @(-12, 12); JoyTiltY = @(12, -12) }
+    [pscustomobject]@{ Dir = 'pico_neo3_leftcontroller'; Tx = 0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = -0.99; Roll = 10.23; JsonSha = 'e76a4b77b0aaa5e1f252085423dde481e8268d9dc666e9ea8457bebb857763bf'; JoyCenterOrig = @(0, 0, 0.02); JoyCenter = @(-0.0158132, 0.0240547, 0.0262966); JoyRotateXyz = @(-3.187, -156.680, 161.960); JoyPress = @(0, 0.0025, 0); JoyTiltOrig = @(6.5, -6.5); JoyTiltX = @(-12, 12); JoyTiltY = @(12, -12) },
+    [pscustomobject]@{ Dir = 'pico_neo3_rightcontroller'; Tx = -0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = 0.99; Roll = -10.23; JsonSha = '6dd340dc1babee10b13d0e625f99ab8348f18a17c6480631a6e9e4b489805d2e'; JoyCenterOrig = @(0, 0, 0.03); JoyCenter = @(0.0158126, 0.024063, 0.0262877); JoyRotateXyz = @(3.188, -156.715, -161.959); JoyPress = @(0, 0.0025, 0); JoyTiltOrig = @(6.5, -6.5); JoyTiltX = @(-12, 12); JoyTiltY = @(12, -12) }
 )
 $inv = [System.Globalization.CultureInfo]::InvariantCulture
 
@@ -461,8 +461,9 @@ function Convert-HandJson {
         if ($isJoy) { $joyBlocks++ }
         for ($j = $i; $j -le $end; $j++) {
             if ($isJoy -and $lines[$j] -match '^(\s*"press_translate"\s*:\s*)\[([^\]]*)\](.*)$') {
-                # press 活在 S 坐标系里（vrserver 算 c + S·press），握把旋转不该碰它：原样保留才正好沿轴压 2.5 mm
+                # press 活在 S 坐标系里。厂商的 (0,-0.0025,0) 在实机上是往外弹，取反才压进去（2026-10-20 实机确认，见 04_g）
                 Assert-HandXyz -Cfg $Cfg -Got (Read-HandXyz $Matches[2]) -Want (Read-HandXyz '0, -0.0025, 0') -What '摇杆 press_translate（厂商原值）'
+                $lines[$j] = $Matches[1] + (Format-HandXyz $Cfg.JoyPress) + $Matches[3]
                 $keys++
             }
             elseif ($lines[$j] -match '^(\s*"(pivot|center|axis)"\s*:\s*)\[([^\]]*)\](.*)$') {
@@ -541,6 +542,8 @@ function Convert-HandJson {
     Assert-HandXyz -Cfg $Cfg -Got $got -Want $want -What '摇杆支点'
     try { $got = @($obj.components.joystick.motion.rotate_xyz) } catch { Die "$($Cfg.Dir).json 复核失败：未找到 joystick.motion.rotate_xyz。" }
     Assert-HandXyz -Cfg $Cfg -Got $got -Want $Cfg.JoyRotateXyz -What '摇杆轴重映射'
+    try { $got = @($obj.components.joystick.motion.press_translate) } catch { Die "$($Cfg.Dir).json 复核失败：未找到 joystick.motion.press_translate。" }
+    Assert-HandXyz -Cfg $Cfg -Got $got -Want $Cfg.JoyPress -What '摇杆按下方向'
     foreach ($k in 'joystick_rotation_x', 'joystick_rotation_y') {
         try { $got = @($obj.components.joystick.motion.$k) } catch { Die "$($Cfg.Dir).json 复核失败：未找到 joystick.motion.$k。" }
         $want = if ($k -eq 'joystick_rotation_x') { $Cfg.JoyTiltX } else { $Cfg.JoyTiltY }
