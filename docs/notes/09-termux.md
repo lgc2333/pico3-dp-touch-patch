@@ -54,6 +54,7 @@ picohaxx 会自己中止（`FATAL: SPINLOCK TIMEOUT`），两种表现：**同�
 - hook 装好会在注入器日志里回执：`{"type":"send","payload":{"ok":true,"msg":"touch hook installed"}}`。
 - 注入器不能吃 Termux 的 `LD_LIBRARY_PATH`（会去 Termux 的库目录找 `libz`/`libcrypto` ⇒ 静默死掉），`TMPDIR` 指到 `/data/local/tmp`。
 - `dptouch` 的日志显示是「写文件 + `tail -f` 跟读」；**stdout 恰好就是那份日志时不能 tail**（等于把日志内容又写回自己，自我喂养 —— 实测刷出过 193 MB）⇒ 脚本先比 inode，是同一个就跳过显示。
+- `$PREFIX/bin/dptouch` 是 symlink，标签必须等于 app 自己的：root 建出来的条目只带 `u:object_r:app_data_file:s0`、少了 app 的类别（`s0:c126,c256,c512,c768`）⇒ app 连 `stat` 都被拒（`install.sh` 报 `cp: cannot stat`、敲 `dptouch` 直接 Permission denied）。实机踩过两次（2026-10-05）；**toybox 的 `chcon` 不支持 `--reference`**，且在 `;` 链里静默失败、退出码还被后面的 `restorecon` 覆盖成 0 ⇒ 显式喂上下文：宿主侧从 `ls -Zd $PREFIX/home` 取第一列，再 `chcon -h <ctx> $PREFIX/bin/dptouch`。`Push-TermuxKit` 建完会 `ls -lZ` 反查、标签不对就 `[X]` 并让用户跑 `install.sh`。
 - exploit 刚跑完那几秒 lmkd 会连着杀进程（实测连 `u:r:su:s0` 的也杀），注入器可能被顺手杀掉 ⇒ 那时重跑一次 `dptouch` 即可。
 
 ## 与 PC 路径的关系
