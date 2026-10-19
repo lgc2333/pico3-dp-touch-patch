@@ -59,22 +59,22 @@ function Resolve-Target {
     $devs = @(Get-AdbDevices -Adb $Adb -State 'device')
     if ($devs.Count -eq 1) { return $devs[0].Serial }
     if ($devs.Count -gt 1) {
-        Write-Host '[i] adb 上连着多台设备，选一台：'
+        Write-Host '[i] adb 上有多台设备。请选择一台。'
         for ($i = 0; $i -lt $devs.Count; $i++) { Write-Host ('    [{0}] {1}' -f ($i + 1), $devs[$i].Serial) }
         while ($true) {
             $a = "$(Read-Host '序号（回车=第 1 台）')".Trim()
             if (-not $a) { return $devs[0].Serial }
             if ($a -match '^\d+$' -and [int]$a -ge 1 -and [int]$a -le $devs.Count) { return $devs[[int]$a - 1].Serial }
-            Write-Host ("[X] 没看懂「{0}」，请输入 1-{1}" -f $a, $devs.Count) -ForegroundColor Red
+            Write-Host ("[X] 输入无效：{0}。请输入 1-{1}。" -f $a, $devs.Count) -ForegroundColor Red
         }
     }
 
-    Write-Host '[i] 头显 IP 在哪看：头显里打开投屏 APP → 点「投至浏览器」，页面上那串地址就是它'
+    Write-Host '[i] 查看头显 IP：在头显中打开投屏 APP，点「投至浏览器」。页面会显示这个地址。'
     while ($true) {
         $a = "$(Read-Host '头显地址（只填 IP 那段，可带端口；q=退出）')".Trim()
         if ($a -match '^(q|quit|取消)$') { return '' }
         if ($a -match '^\d{1,3}(\.\d{1,3}){3}(:\d+)?$') { return (Add-Port -Value $a) }
-        Write-Host ("[X] 没看懂「{0}」，只填 IP 那一段，例如 192.168.137.108" -f $a) -ForegroundColor Red
+        Write-Host ("[X] 输入无效：{0}。请只输入 IP 地址，例如 192.168.137.108。" -f $a) -ForegroundColor Red
     }
 }
 
@@ -84,13 +84,13 @@ function Connect-Target {
     $st = Get-AdbDeviceState -Adb $Adb -Target $Target
     if ($st -ne 'device' -and $Target -match '^\d+\.\d+\.\d+\.\d+:\d+$') {
         try { & $Adb connect $Target 2>&1 | Out-Null }
-        catch { Write-Host "[!] adb connect 报错：$($_.Exception.Message)" -ForegroundColor Yellow }
+        catch { Write-Host "[!] adb connect 出错：$($_.Exception.Message)" -ForegroundColor Yellow }
         Start-Sleep -Seconds 2
         $st = Get-AdbDeviceState -Adb $Adb -Target $Target
     }
     if ($st -eq 'device') { return $true }
     $why = if ($st) { $st } else { '不在 adb devices 里' }
-    Write-Host ("[X] 设备 {0} 不可用（{1}）" -f $Target, $why) -ForegroundColor Red
+    Write-Host ("[X] 设备 {0} 不可用（{1}）。" -f $Target, $why) -ForegroundColor Red
     $false
 }
 
@@ -110,9 +110,9 @@ function Get-Lines {
 function Probe-Id {
     param([string]$Adb, [string]$Target)
     $text = (@(Get-Lines -Text (Invoke-AdbShell -Adb $Adb -Target $Target -Remote 'id')) -join ' ').Trim()
-    if ($text -notmatch 'uid=\d+') { Write-Host "[X] id 没拿到 uid（设备掉线？）：$text" -ForegroundColor Red; return $false }
+    if ($text -notmatch 'uid=\d+') { Write-Host "[X] id 命令未返回 uid。设备可能离线：$text" -ForegroundColor Red; return $false }
     Write-Host "[i] $text"
-    if ($text -notmatch 'uid=0\(') { Write-Host '[!] adbd 不是 root：用 PC 侧 pico_touch.bat 提权（picohaxx）' -ForegroundColor Yellow }
+    if ($text -notmatch 'uid=0\(') { Write-Host '[!] adbd 不是 root。请用 PC 侧 pico_touch.bat 提权（picohaxx）。' -ForegroundColor Yellow }
     $true
 }
 
@@ -120,10 +120,10 @@ function Probe-Seccomp {
     param([string]$Adb, [string]$Target)
     $remote = "grep -E '^Seccomp:' /proc/self/status"
     $text = (@(Get-Lines -Text (Invoke-AdbShell -Adb $Adb -Target $Target -Remote $remote)) -join ' ').Trim()
-    if ($text -notmatch 'Seccomp:\s*(\d+)') { Write-Host "[X] 读不到 Seccomp：$text" -ForegroundColor Red; return $false }
+    if ($text -notmatch 'Seccomp:\s*(\d+)') { Write-Host "[X] 无法读取 Seccomp：$text" -ForegroundColor Red; return $false }
     $n = [int]$Matches[1]
     Write-Host "[i] $text"
-    if ($n -ne 0) { Write-Host "[!] 这条 adb 线被 seccomp 过滤（$n ≠ 0）：在它里面注入会被 SIGSYS 打死，换成 adb root 的那条线再跑" -ForegroundColor Yellow }
+    if ($n -ne 0) { Write-Host "[!] 这条 adb 线路被 seccomp 过滤（$n ≠ 0）。在这条线路上注入会被 SIGSYS 终止。请改用 adb root 的线路。然后重新运行。" -ForegroundColor Yellow }
     $true
 }
 
@@ -133,25 +133,25 @@ function Probe-Hook {
     # 远端命令里别出现双引号：PowerShell 会把它转义成 \" 原样带给 sh，[ -n "$p" ] 就恒真了（pidof -s 只取一个 pid，[ $p ] 不带引号也安全）
     $remote = 'p=$(pidof -s pxrstreamingservice); if [ $p ]; then echo PID=$p; grep -c frida-agent /proc/$p/maps; else echo NO_PID; fi'
     $lines = @(Get-Lines -Text (Invoke-AdbShell -Adb $Adb -Target $Target -Remote $remote))
-    if (-not $lines) { Write-Host '[X] hook 探针没回话（设备掉线？）' -ForegroundColor Red; return $false }
+    if (-not $lines) { Write-Host '[X] hook 探针无响应。设备可能离线。' -ForegroundColor Red; return $false }
     if ($lines[0] -eq 'NO_PID') {
-        Write-Host '[!] pxrstreamingservice 没在跑：先让头显跑起业务串流（SteamVR 连着），再验 hook' -ForegroundColor Yellow
+        Write-Host '[!] pxrstreamingservice 未运行。请先让头显启动业务串流（SteamVR 已连接）。然后检查 hook。' -ForegroundColor Yellow
         return $true
     }
-    if ($lines[0] -notmatch '^PID=(\d+)$') { Write-Host ("[X] 没看懂设备回的话：{0}" -f ($lines -join ' | ')) -ForegroundColor Red; return $false }
+    if ($lines[0] -notmatch '^PID=(\d+)$') { Write-Host ("[X] 无法解析设备返回：{0}" -f ($lines -join ' | ')) -ForegroundColor Red; return $false }
     $procId = $Matches[1]
     $rest = @($lines | Select-Object -Skip 1)
     if (-not $rest -or $rest[0] -notmatch '^\d+$') {
-        Write-Host ("[X] 读不到 /proc/{0}/maps（{1}）：需要 adbd 是 root" -f $procId, ($rest -join ' | ')) -ForegroundColor Red
+        Write-Host ("[X] 无法读取 /proc/{0}/maps（{1}）。需要 adbd 是 root。" -f $procId, ($rest -join ' | ')) -ForegroundColor Red
         return $false
     }
     $hits = [int]$rest[0]
     if ($hits -gt 0) {
-        Write-Host ("[i] hook: pxrstreamingservice(pid {0}) maps 里 frida-agent 命中 {1} 次" -f $procId, $hits)
+        Write-Host ("[i] hook：pxrstreamingservice(pid {0}) 的 maps 中 frida-agent 命中 {1} 次" -f $procId, $hits)
     }
     else {
-        Write-Host ("[i] hook: pxrstreamingservice(pid {0}) 在跑，frida-agent 命中 0 次" -f $procId)
-        Write-Host '[!] hook 没装上：用 PC 侧 pico_touch.bat 重新注入' -ForegroundColor Yellow
+        Write-Host ("[i] hook：pxrstreamingservice(pid {0}) 正在运行，frida-agent 命中 0 次" -f $procId)
+        Write-Host '[!] hook 未安装。请用 PC 侧 pico_touch.bat 重新注入。' -ForegroundColor Yellow
     }
     $true
 }
@@ -175,13 +175,13 @@ function Probe-Kit {
     }
     if ($dev.Count -eq 0) {
         Write-Host ("[X] 设备上没有可比的 kit：{0}" -f ($lines -join ' | ')) -ForegroundColor Red
-        Write-Host "[i] $HomeDir 要么没装 kit（跑 PC 侧 pico_touch.bat），要么 adbd 不是 root 进不去 Termux 家目录（pico_touch.bat 会 chmod 755）" -ForegroundColor Yellow
+        Write-Host "[i] $HomeDir 未安装 kit，或 adbd 不是 root、无法进入 Termux 家目录。请运行 PC 侧 pico_touch.bat。它会执行 chmod 755。" -ForegroundColor Yellow
         return $false
     }
     $same = 0
     foreach ($n in $names) {
         $src = $srcOf[$n]
-        if (-not (Test-Path -LiteralPath $src)) { Write-Host ("[!] {0}：本地缺（{1}）" -f $n, $src) -ForegroundColor Yellow; continue }
+        if (-not (Test-Path -LiteralPath $src)) { Write-Host ("[!] {0}：本地缺少 {1}" -f $n, $src) -ForegroundColor Yellow; continue }
         $local = (Get-FileHash -LiteralPath $src -Algorithm MD5).Hash.ToLower()
         if (-not $dev.ContainsKey($n)) { Write-Host ("[!] {0}：设备上没有（本地 {1}）" -f $n, $local) -ForegroundColor Yellow; continue }
         if ($dev[$n] -eq $local) {
@@ -192,7 +192,7 @@ function Probe-Kit {
             Write-Host ("[!] {0}  设备 {1} ≠ 本地 {2}" -f $n, $dev[$n], $local) -ForegroundColor Yellow
         }
     }
-    Write-Host ("[i] kit: {0}/{1} 与仓库一致（设备 {2}）" -f $same, $names.Count, $HomeDir)
+    Write-Host ("[i] kit：{0}/{1} 与仓库一致（设备 {2}）" -f $same, $names.Count, $HomeDir)
     $true
 }
 
@@ -202,7 +202,7 @@ function Probe-Logs {
     # 最新一份 = mtime 最靠后的；读不到要说清是没日志、目录没装还是进不去（同样不带双引号）
     $remote = 'd=' + $dir + '; f=$(ls -t $d/*.log 2>/dev/null | head -n 1); if [ $f ]; then echo FILE=$f; tail -n 20 $f; elif [ ! -d $d ]; then echo NO_DIR; elif [ -r $d ]; then echo NO_LOG; else echo NO_ACCESS; fi'
     $lines = @(Invoke-AdbShell -Adb $Adb -Target $Target -Remote $remote)
-    if (-not $lines) { Write-Host '[X] logs 探针没回话（设备掉线？）' -ForegroundColor Red; return $false }
+    if (-not $lines) { Write-Host '[X] logs 探针无响应。设备可能离线。' -ForegroundColor Red; return $false }
     switch -Regex ("$($lines[0])".Trim()) {
         '^FILE=(.+)$' {
             Write-Host ("[i] 最新日志：{0}" -f $Matches[1])
@@ -210,20 +210,20 @@ function Probe-Logs {
             return $true
         }
         '^NO_LOG$' {
-            Write-Host "[i] $dir 里还没有 *.log（在头显 Termux 里跑一次 dptouch 就会写）"
+            Write-Host "[i] $dir 中没有 *.log。在头显 Termux 中运行一次 dptouch 后会生成。"
             return $true
         }
         '^NO_DIR$' {
-            Write-Host ("[!] 设备上还没有 {0}：kit 没装，跑 PC 侧 pico_touch.bat" -f $dir) -ForegroundColor Yellow
+            Write-Host ("[!] 设备上还没有 {0}。kit 未安装。请运行 PC 侧 pico_touch.bat。" -f $dir) -ForegroundColor Yellow
             return $true
         }
         '^NO_ACCESS$' {
-            Write-Host ("[X] 读不到 {0}：adbd 不是 root，进不去 Termux 家目录" -f $dir) -ForegroundColor Red
-            Write-Host '[i] 用 PC 侧 pico_touch.bat 跑一次（会把 kit chmod 755），或 adb root' -ForegroundColor Yellow
+            Write-Host ("[X] 无法读取 {0}。adbd 不是 root，无法进入 Termux 家目录。" -f $dir) -ForegroundColor Red
+            Write-Host '[i] 请运行一次 PC 侧 pico_touch.bat（它会执行 chmod 755），或运行 adb root。' -ForegroundColor Yellow
             return $false
         }
         default {
-            Write-Host ("[X] 没看懂设备回的话：{0}" -f ($lines -join ' | ')) -ForegroundColor Red
+            Write-Host ("[X] 无法解析设备返回：{0}" -f ($lines -join ' | ')) -ForegroundColor Red
             return $false
         }
     }
@@ -231,7 +231,7 @@ function Probe-Logs {
 
 $IpFile = Join-Path $P.Cache '.headset_ip'
 $target = Resolve-Target -Adb $Adb -Target $Target -IpFile $IpFile
-if (-not $target) { Write-Host '[X] 没认下设备（已取消）' -ForegroundColor Red; exit 1 }
+if (-not $target) { Write-Host '[X] 未选择设备。已取消。' -ForegroundColor Red; exit 1 }
 if (-not (Connect-Target -Adb $Adb -Target $target)) { exit 1 }
 
 $probes = @(switch ($What) {

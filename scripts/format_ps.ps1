@@ -27,7 +27,7 @@ foreach ($p in $Path) {
     elseif (Test-Path -LiteralPath $p -PathType Leaf) { $files += @(Get-Item -LiteralPath $p) }
     else { Write-Host "[X] 路径不存在：$p" -ForegroundColor Red; exit 1 }
 }
-if (-not $files) { Write-Host '[X] 没找到要格式化的 .ps1' -ForegroundColor Red; exit 1 }
+if (-not $files) { Write-Host '[X] 未找到要格式化的 .ps1。' -ForegroundColor Red; exit 1 }
 
 function Test-HeaderLevel {
     # 只判定文件头是否「顶格起、每级 4 空格」：正文行的缩进去重排序后，期望正好是 0/4/8…
@@ -109,5 +109,5 @@ foreach ($f in $files) {
     foreach ($w in $r.Warn) { Write-Host "[!] $($f.Name)：$w" -ForegroundColor Yellow }
 }
 
-if ($Check -and $changed) { Write-Host "[X] 有 $changed 个文件不符合格式（跑不带 -Check 的即可修好）" -ForegroundColor Red; exit 1 }
+if ($Check -and $changed) { Write-Host "[X] 有 $changed 个文件不符合格式。运行不带 -Check 的命令即可修复。" -ForegroundColor Red; exit 1 }
 Write-Host "[+] 完成：$($files.Count) 个文件，改动 $changed 个" -ForegroundColor Green

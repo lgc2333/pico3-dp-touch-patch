@@ -61,19 +61,19 @@ function Get-VerifiedFile {
             Write-Host "[=] 用缓存：$($Spec.File)"
             return $out
         }
-        Write-Host "[!] 缓存里的 $($Spec.File) sha256 对不上，重下" -ForegroundColor Yellow
+        Write-Host "[!] 缓存中的 $($Spec.File) sha256 不匹配。正在重新下载。" -ForegroundColor Yellow
     }
     New-Item -ItemType Directory -Force $P.Cache | Out-Null
     if (-not (Get-RemoteFile -Url $Spec.Url -Out $out)) {
-        Write-Host "[X] 下载失败：$($Spec.Url)" -ForegroundColor Red
+        Write-Host "[X] 下载失败：$($Spec.Url)。" -ForegroundColor Red
         exit 1
     }
     $got = (Get-FileHash -Path $out -Algorithm SHA256).Hash
     if ($got -ne $Spec.Sha) {
         Remove-Item -Force $out
-        Write-Host "[X] $($Spec.File) sha256 对不上（上游换文件了？），已删，不装：" -ForegroundColor Red
+        Write-Host "[X] $($Spec.File) 的 sha256 不匹配。上游可能更换了文件。已删除，未安装：" -ForegroundColor Red
         Write-Host "    期望 $($Spec.Sha)"
-        Write-Host "    实得 $got"
+        Write-Host "    实际值 $got"
         exit 1
     }
     Write-Host "[+] 已下载并校验：$(Split-Path $out -Leaf)" -ForegroundColor Green
@@ -98,33 +98,33 @@ $apk = Get-VerifiedFile -Spec $Hs
 
 Write-Host '[i] 第 2/4 步：认头显'
 $sel = Select-Headset -Adb $Adb -Serial $Serial -IpFile (Join-Path $P.Cache '.headset_ip')
-if (-not $sel) { Write-Host '[X] 没找到头显（已取消）' -ForegroundColor Red; exit 1 }
+if (-not $sel) { Write-Host '[X] 未找到头显。已取消。' -ForegroundColor Red; exit 1 }
 $D = $sel.Target
-Write-Host "[+] 用 $D" -ForegroundColor Green
+Write-Host "[+] 使用头显：$D" -ForegroundColor Green
 $cur = Get-BStreamInfo -Adb $Adb -Target $D
-if ($cur) { Write-Host "[i] 现在是 $($cur.Ver)（versionCode $($cur.Code)）" }
-else { Write-Host '[!] 读不到当前版本（app 没装？）' -ForegroundColor Yellow }
+if ($cur) { Write-Host "[i] 当前版本：$($cur.Ver)（versionCode $($cur.Code)）" }
+else { Write-Host '[!] 无法读取当前版本。应用可能未安装。' -ForegroundColor Yellow }
 
-Write-Host '[i] 第 3/4 步：卸载更新 + 装目标版本'
+Write-Host '[i] 第 3/4 步：卸载更新，安装目标版本'
 if ((((& $Adb -s $D shell "pidof $($Hs.Pkg)") -join '')).Trim()) {
-    Write-Host '[!] 头显上企业串流正在跑，下面这步会把它结束掉' -ForegroundColor Yellow
+    Write-Host '[!] 头显上的企业串流正在运行。下一步会结束它。' -ForegroundColor Yellow
 }
 $out = ((& $Adb -s $D uninstall $Hs.Pkg) -join ' ').Trim()
-if ($out -match 'Success') { Write-Host '[+] 已卸载用户态更新（回落到系统内置版）' }
-else { Write-Host "[!] 卸载更新没报 Success（$out），直接装" -ForegroundColor Yellow }
+if ($out -match 'Success') { Write-Host '[+] 已卸载用户态更新。已回落到系统内置版。' }
+else { Write-Host "[!] 卸载更新未返回 Success（$out）。继续安装。" -ForegroundColor Yellow }
 
-Write-Host "[i] 往 $D 装 $($Hs.Ver)（无线 adb 下十几秒到一分钟，别拔线）"
+Write-Host "[i] 正在向 $D 安装 $($Hs.Ver)。无线 adb 下需要十几秒到一分钟。不要拔线。"
 & $Adb -s $D install -r -d $apk
-if ($LASTEXITCODE -ne 0) { Write-Host "[X] adb install 失败（退出码 $LASTEXITCODE）" -ForegroundColor Red; exit 1 }
+if ($LASTEXITCODE -ne 0) { Write-Host "[X] adb install 失败。退出码 $LASTEXITCODE。" -ForegroundColor Red; exit 1 }
 
 Write-Host '[i] 第 4/4 步：校验'
 $new = Get-BStreamInfo -Adb $Adb -Target $D
-if (-not $new) { Write-Host '[X] 装完读不到版本，头显里自己看一眼企业串流' -ForegroundColor Red; exit 1 }
-Write-Host "[i] 装完是 $($new.Ver)（versionCode $($new.Code)）"
-if ($new.Ver -ne $Hs.Ver) { Write-Host "[X] 版本不是 $($Hs.Ver)，看上面 adb install 的输出" -ForegroundColor Red; exit 1 }
+if (-not $new) { Write-Host '[X] 安装后无法读取版本。请在头显中检查企业串流。' -ForegroundColor Red; exit 1 }
+Write-Host "[i] 安装后版本：$($new.Ver)（versionCode $($new.Code)）"
+if ($new.Ver -ne $Hs.Ver) { Write-Host "[X] 版本不是 $($Hs.Ver)。请查看上面的 adb install 输出。" -ForegroundColor Red; exit 1 }
 # 系统级权限来自 UPDATED_SYSTEM_APP 身份；掉成普通 app 串流链路就断了（见 docs/notes/01-device.md）
 if ($new.Flags -notmatch 'SYSTEM' -or $new.Flags -notmatch 'UPDATED_SYSTEM_APP') {
-    Write-Host "[X] flags 不对（$($new.Flags)）：不是「更新过的系统 app」，串流会断" -ForegroundColor Red
+    Write-Host "[X] flags 不正确（$($new.Flags)）。应用不是「更新过的系统 app」。串流会中断。" -ForegroundColor Red
     exit 1
 }
 Write-Host "[+] 头显端已是 $($Hs.Ver)" -ForegroundColor Green
@@ -132,15 +132,15 @@ Write-Host "[+] 头显端已是 $($Hs.Ver)" -ForegroundColor Green
 # PC 端不是降级必须的：头显换好照常用；只有 PC 端软件也要跟着换版本时才要下
 if (-not $PcClient) {
     Write-Host ''
-    Write-Host '[i] PC 端「企业串流」安装包约 211 MB，只有 PC 端也要一起换版本时才需要'
-    $a = "$(Read-Host '要一起下载吗？（y = 下 / 回车 = 不下）')".Trim()
+    Write-Host '[i] PC 端「企业串流」安装包约 211 MB。只有 PC 端也要换版本时才需要。'
+    $a = "$(Read-Host '要一起下载吗？y=下载，回车=不下载')".Trim()
     if ($a -match '^(y|yes|是)$') { $PcClient = $true }
 }
 if ($PcClient) {
     $exe = Get-VerifiedFile -Spec $Pc
     Write-Host "[+] PC 端安装包：$exe"
     Write-Host ("    文件版本 {0}" -f (Get-Item $exe).VersionInfo.FileVersion)
-    Write-Host '[!] 装它之前：先完全卸载新版 PC 端软件，再装这个安装包（别直接覆盖装）；SteamVR 和 Business Streaming DP 也要先完全退出' -ForegroundColor Yellow
+    Write-Host '[!] 安装前：先完全卸载新版 PC 端软件。然后安装这个安装包。不要直接覆盖安装。也要先完全退出 SteamVR 和 Business Streaming DP。' -ForegroundColor Yellow
 }
 else {
     Write-Host '[=] 跳过 PC 端安装包'

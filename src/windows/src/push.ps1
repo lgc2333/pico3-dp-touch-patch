@@ -30,9 +30,9 @@ $Sd = "/sdcard/Download/$DirName"
 # --- 认头显 ---
 $IpFile = Join-Path $P.Cache '.headset_ip'
 $sel = Select-Headset -Adb $Adb -Serial $Serial -IpFile $IpFile
-if (-not $sel) { Write-Host '[X] 没找到头显（已取消）' -ForegroundColor Red; exit 1 }
+if (-not $sel) { Write-Host '[X] 未找到头显。已取消。' -ForegroundColor Red; exit 1 }
 $target = $sel.Target
-Write-Host "[+] 头显：$target" -ForegroundColor Green
+Write-Host "[+] 已选择头显：$target" -ForegroundColor Green
 
 # --- 推文件 ---
 & $Adb -s $target shell "mkdir -p $Sd" | Out-Null
@@ -49,12 +49,12 @@ $jobs = @(
 )
 foreach ($j in $jobs) {
     $s = $j.Src; $d = $j.Dst
-    if (-not (Test-Path $s)) { Write-Host "[X] 缺少 $s" -ForegroundColor Red; exit 1 }
+    if (-not (Test-Path $s)) { Write-Host "[X] 缺少 $s。" -ForegroundColor Red; exit 1 }
     & $Adb -s $target push $s $d | Out-Null
-    if ($LASTEXITCODE -ne 0) { Write-Host "[X] 推送失败：$s" -ForegroundColor Red; exit 1 }
+    if ($LASTEXITCODE -ne 0) { Write-Host "[X] 推送失败：$s。" -ForegroundColor Red; exit 1 }
 }
 & $Adb -s $target shell 'chmod 755 /data/local/tmp/frida-inject /data/local/tmp/start_touch.sh; chmod 644 /data/local/tmp/hook.js'
-Write-Host "[+] 已推 $($jobs.Count) 个文件：" -ForegroundColor Green
+Write-Host "[+] 已推送 $($jobs.Count) 个文件：" -ForegroundColor Green
 $jobs | Group-Object { $_.Dst.Substring(0, $_.Dst.LastIndexOf('/')) } | ForEach-Object {
     Write-Host ('      · {0}：{1}' -f $_.Name, (($_.Group | ForEach-Object { $_.Dst.Substring($_.Dst.LastIndexOf('/') + 1) }) -join '、'))
 }
