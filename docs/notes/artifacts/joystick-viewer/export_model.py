@@ -85,36 +85,6 @@ def pca_thin_axis(P):
     return n if n[2] > 0 else -n
 
 
-GRIP_Z = (62.0, 134.0)  # the handle, between the pad and the tail
-SPIN_DEG = 1.37  # extra turn about the stick axis; user-chosen, see the frame block
-
-
-def handle_mid(V):
-    """Midpoint of the handle centreline.
-
-    Slabs along z give one bounding-box centre each; the line through those
-    centres is the handle axis, and its midpoint is where the palm sits.
-    """
-    zs, cs = [], []
-    for z0 in np.arange(GRIP_Z[0], GRIP_Z[1], 2.0):
-        m = (V[:, 2] >= z0) & (V[:, 2] < z0 + 2.0)
-        if m.sum() < 20:
-            continue
-        B = V[m]
-        zs.append(z0 + 1.0)
-        cs.append(
-            (
-                0.5 * (B[:, 0].min() + B[:, 0].max()),
-                0.5 * (B[:, 1].min() + B[:, 1].max()),
-            )
-        )
-    A = np.column_stack([np.array(zs), np.ones(len(zs))])
-    kx, bx = np.linalg.lstsq(A, np.array(cs)[:, 0], rcond=None)[0]
-    ky, by = np.linalg.lstsq(A, np.array(cs)[:, 1], rcond=None)[0]
-    zm = 0.5 * (GRIP_Z[0] + GRIP_Z[1])
-    return np.array([kx * zm + bx, ky * zm + by, zm])
-
-
 def vec(a):
     return [round(float(x), 6) for x in a]
 
@@ -170,33 +140,17 @@ foot_t = float(t.min())
 cap_r = float(r[np.abs(t - cap_t) < 0.6].max())
 
 # --- pad frame -------------------------------------------------------------
-# Both rotation axes lie in the pad plane.  The in-plane up direction is the
-# line from the handle midpoint to the system button, projected onto the plane:
-# that is what the thumb reads as up, and it does not follow world up.
-Vb, _ = load("left_body.obj.orig")
-Vh, _ = load(f"{PARTS['home']}.obj.orig")
-mid = handle_mid(Vb)
-sys_c = Vh.mean(axis=0)
-g = sys_c - mid
-g_in = g - (g @ n) * n
-up = g_in / np.linalg.norm(g_in)
-# The user tried the grip-axis projection (2.59 deg) and found it a touch too far,
-# then asked for the line above: on its own it reads ~1 deg short.  SPIN_DEG is the
-# extra turn about the stick axis that settles the feel.  It is a chosen value.
-d_spin = math.radians(SPIN_DEG)
-up = math.cos(d_spin) * up + math.sin(d_spin) * np.cross(n, up)
+# Both rotation axes lie in the pad plane, and one of them is kept horizontal:
+# the in-plane up is the world-up direction projected onto the plane.
+e_h = np.cross([0.0, 0.0, 1.0], n)
+e_h /= np.linalg.norm(e_h)
+up = np.cross(e_h, n)
 up /= np.linalg.norm(up)
-e_h = np.cross(n, up)
 right = -e_h
-S = np.column_stack(
-    [e_h, n, up]
-)  # x -> across, y -> outward, z -> grip midpoint to system button, then SPIN_DEG
+S = np.column_stack([e_h, n, up])  # x -> horizontal, y -> outward, z -> steepest
 assert abs(np.linalg.det(S) - 1) < 1e-9
 assert abs(float(S[:, 1] @ n) - 1.0) < 1e-12
-assert abs(float(up @ n)) < 1e-12
-world_up = np.cross(np.cross([0.0, 0.0, 1.0], n), n)  # the frame this one replaces
-world_up /= np.linalg.norm(world_up)
-spin = math.degrees(math.atan2(float(np.cross(world_up, up) @ n), float(world_up @ up)))
+assert abs(float(S[2, 0])) < 1e-12  # the horizontal axis stays horizontal
 b = math.degrees(math.asin(max(-1.0, min(1.0, -S[2, 0]))))
 a = math.degrees(math.atan2(S[2, 1], S[2, 2]))
 c = math.degrees(math.atan2(S[1, 0], S[0, 0]))
@@ -250,17 +204,7 @@ print(
 print(f"cap radius {cap_r:.2f} mm   cap plane spread {spread:.3f} mm")
 print(f"stick axis point = ({axis_c[0]:+.3f},{axis_c[1]:+.3f},{axis_c[2]:+.3f})")
 print(
-    f"grip mid = ({mid[0]:+.2f},{mid[1]:+.2f},{mid[2]:+.2f}) mm"
-    f"   system button centre = ({sys_c[0]:+.2f},{sys_c[1]:+.2f},{sys_c[2]:+.2f}) mm"
-)
-print(
-    f"grip mid -> system button = {np.linalg.norm(g):.2f} mm,"
-    f" {math.degrees(math.acos(abs(float(g / np.linalg.norm(g) @ n)))):.2f} deg off the pad normal,"
-    f" {np.linalg.norm(g_in):.2f} mm of it inside the plane"
-)
-print(
     f"X-input axis = ({up[0]:+.4f},{up[1]:+.4f},{up[2]:+.4f})  {math.degrees(math.acos(abs(up[2]))):.2f} deg from vertical"
-    f"  ({spin:+.2f} deg spin about the stick axis)"
 )
 print(f"Y-input axis = ({e_h[0]:+.4f},{e_h[1]:+.4f},{e_h[2]:+.4f})")
 print(f"rotate_xyz   = [{b:.3f}, {a:.3f}, {c:.3f}] deg")

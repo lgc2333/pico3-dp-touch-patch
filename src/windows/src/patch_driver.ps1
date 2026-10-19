@@ -324,8 +324,8 @@ $resRoot = Join-Path (Split-Path (Split-Path (Split-Path $dll -Parent) -Parent) 
 $rmRoot = Join-Path $resRoot 'rendermodels'
 $handObjSha = '6a6e82bfda8ac4ad7937905bb8cf2691db51c6e22674ce6ec6afecff110dc208'
 $handCfgs = @(
-    [pscustomobject]@{ Dir = 'pico_neo3_leftcontroller'; Tx = 0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = -0.99; Roll = 10.23; JsonSha = 'e76a4b77b0aaa5e1f252085423dde481e8268d9dc666e9ea8457bebb857763bf'; JoyCenterOrig = @(0, 0, 0.02); JoyCenter = @(-0.0158132, 0.0240547, 0.0262966); JoyRotateXyz = @(-3.187, -156.680, 161.960); JoyPress = @(0, 0.0025, 0); JoyTiltOrig = @(6.5, -6.5); JoyTiltX = @(-12, 12); JoyTiltY = @(12, -12) },
-    [pscustomobject]@{ Dir = 'pico_neo3_rightcontroller'; Tx = -0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = 0.99; Roll = -10.23; JsonSha = '6dd340dc1babee10b13d0e625f99ab8348f18a17c6480631a6e9e4b489805d2e'; JoyCenterOrig = @(0, 0, 0.03); JoyCenter = @(0.0158126, 0.024063, 0.0262877); JoyRotateXyz = @(3.188, -156.715, -161.959); JoyPress = @(0, 0.0025, 0); JoyTiltOrig = @(6.5, -6.5); JoyTiltX = @(-12, 12); JoyTiltY = @(12, -12) }
+    [pscustomobject]@{ Dir = 'pico_neo3_leftcontroller'; Tx = 0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = -0.99; Roll = 10.23; JsonSha = 'e76a4b77b0aaa5e1f252085423dde481e8268d9dc666e9ea8457bebb857763bf'; JoyCenterOrig = @(0, 0, 0.02); JoyCenter = @(-0.0158132, 0.0240547, 0.0262966); JoyRotateXyz = @(0, -156.718, 163.333); JoyPress = @(0, 0.0025, 0); JoyTiltOrig = @(6.5, -6.5); JoyTiltX = @(-12, 12); JoyTiltY = @(12, -12) },
+    [pscustomobject]@{ Dir = 'pico_neo3_rightcontroller'; Tx = -0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = 0.99; Roll = -10.23; JsonSha = '6dd340dc1babee10b13d0e625f99ab8348f18a17c6480631a6e9e4b489805d2e'; JoyCenterOrig = @(0, 0, 0.03); JoyCenter = @(0.0158126, 0.024063, 0.0262877); JoyRotateXyz = @(0, -156.753, -163.329); JoyPress = @(0, 0.0025, 0); JoyTiltOrig = @(6.5, -6.5); JoyTiltX = @(-12, 12); JoyTiltY = @(12, -12) }
 )
 $inv = [System.Globalization.CultureInfo]::InvariantCulture
 
@@ -488,7 +488,7 @@ function Convert-HandJson {
             elseif ($isJoy -and $lines[$j] -match '^(\s*"rotate_xyz"\s*:\s*)\[([^\]]*)\](.*)$') {
                 # 摇杆：厂商按「摇杆沿 Y 轴」写这套参数，网格里摇杆沿实测按键平面的法向 ⇒ 用 rotate_xyz 把
                 # vrserver 写死的两个转轴（X / Z）共轭到平面内；平面内的「上」取「握把中点 → system 键」的投影，
-                # 再按手感多转 1.37°（合计偏世界 up 2.40°），不取世界 up（见 04_g）。
+                # 平面内的「上」取世界 up 的投影，一条转轴严格水平（不按手感加旋转，见 04_g）。
                 # 顶点先被握把矩阵转过 ⇒ S 要按旋转后的法向 R·n 重算（用变换前的法向会让轴向偏 ~1°）。
                 Assert-HandXyz -Cfg $Cfg -Got (Read-HandXyz $Matches[2]) -Want @(0, 0, 0) -What '摇杆 rotate_xyz（厂商原值）'
                 $lines[$j] = $Matches[1] + (Format-HandXyz $Cfg.JoyRotateXyz) + $Matches[3]

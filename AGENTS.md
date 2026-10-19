@@ -112,7 +112,7 @@ adb shell 'ls -la /data/data/com.termux/files/home/pico_touch; ls -l /data/data/
 
 - `get_deps.ps1`（PC 侧唯一的依赖来源）必须保持逐字节校验（上游 md5 + 补丁点原字节），任一不符即中止、不写入。
 - 驱动补丁只对 md5 `9017439d560747678b4550fcf6726808` 的 `driver_pico.dll` 有效；写入前必须校验原字节，失败即中止。
-- 握把补丁必须**成对**改：`[controller]` 位姿、17 个 OBJ 顶点、两份 JSON 的 `motion`（点 `R·p - t`、向量 `R·v`）是同一组参数，只从 `.orig` 重算；厂商 sha256、厂商原值与目标值都卡在 `patch_driver.ps1`，任一不符即中止 —— 指纹一处都别放宽。摇杆的 `center` / `rotate_xyz` / 按下符号 / 手感倾角另有约定，改前先读 `04_g`。
+- 握把补丁必须**成对**改：`[controller]` 位姿、17 个 OBJ 顶点、两份 JSON 的 `motion`（点 `R·p - t`、向量 `R·v`）是同一组参数，只从 `.orig` 重算；厂商 sha256、厂商原值与目标值都卡在 `patch_driver.ps1`，任一不符即中止 —— 指纹一处都别放宽。摇杆的 `center` / `rotate_xyz` / 按下符号另有约定，改前先读 `04_g`。
 - 骨架 payload 只对 v2 的 `driver_pico.dll`（sha256 `d851b7d1…`）有效，且段 RVA 固定 = DP 的 `SizeOfImage`（`0xAB000`）；`docs/notes/artifacts/build_dp_skeleton_payload.py` 卡源 DLL 的 sha256，`patch_driver.ps1` 卡段数 / `SizeOfImage` / 段表 / 两个挂钩点原字节，任一不符即中止 —— 别放宽这几处。
 - 固件版本决定 `picohaxx` 的内核符号偏移；换固件须重取符号（见 `docs/notes/06-root.md`），不要假设偏移通用。
 - 从 v2 抄常量 / 分支前先确认落在哪个「型号 × 形态」：v2 有 4 种控制器 × 手柄/手部追踪两种形态，同一标志位常同时决定设备身份与驱动行为。三问与矩阵见 `04-driver.md` 的「v2 移植约定」。
