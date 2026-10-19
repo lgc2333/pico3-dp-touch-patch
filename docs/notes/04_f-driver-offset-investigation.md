@@ -1,15 +1,14 @@
-# 04.e · 手柄偏移（4cm / 10°）：从模型假设到根因（已修复）
+# 04.f · 手柄偏移：排查与证伪过程
 
 > 总览：[04 · PC 端 OpenVR 驱动](04-driver.md)。
-> 状态：**已定位并修复**（2026-10-17）。同一个偏移问题的完整记录，按调查顺序读：现象 → 早期以为是模型挂接（已证伪，取证见下）→ 标定台与两帧比对 → 改判到设备位姿 → 根因 `apprun` 与补丁。
-> 结论先行：每手偏 **4.28cm / 10.29°**，来源是 host 发的 `apprun` 标志，补丁把 `call atoi` 换成 `xor eax,eax`；9.70cm 与 `handgrip` 的 `+0.097` 只是数值巧合。
-> 2026-10-18 补：这条偏移修掉后暴露的「手不在手心 / 伸不直」是另一个问题，已拆到 [04.f](04_f-driver-hand-grip.md)。
+> 状态：**过程记录**（2026-10-17 完成）。结论与修法见 [04.e](04_e-driver-apprun-offset.md)。
+> 按调查顺序读：现象 → 早期以为是模型挂接（已证伪，取证见下）→ 标定台与两帧比对 → 改判到设备位姿。旧结论不删，保留它只为别重走。
 
 ## 现象与量化
 
 现象：SteamVR 自己的面板 / 系统场景里位置正常；进入 Scene app 后，SteamVR 的等待画面和 VRChat 游戏内都出现同一方向的偏移。用户描述为两只手柄沿各自柄身朝追踪环方向偏约 9 cm：追踪环在现实中相碰时，游戏模型会互相陷入；柄尾相碰时，游戏模型之间会出现空隙。打开 SteamVR 面板时又恢复正常。
 
-Scene app 占场景时，两只手柄的**设备位姿**各偏一段——自身系 `d=(±0.0111,−0.0093,+0.0403)`、`|d|=4.28cm`、绕自身 `∓Z` 转 **10.29°**，左右镜像；`raw` / `standing` / `seated` 三个 universe 同步变、HMD 位姿不变；静态姿势下逐位稳定（预测时间 −0.05…+0.5 s 结果相同、速度全 0）。镜像里肉眼可见两只模型并到一起。
+当时只能从截图推断「模型整体平移约 9.7cm」；后来用真游戏量出的真值是每手 **4.28cm / 10.29°**（见 [04.e](04_e-driver-apprun-offset.md)）。下文保留当时的口径与推理顺序。
 
 ## 早期主线：模型挂接（已证伪）
 
@@ -50,7 +49,7 @@ Scene app 占场景时，两只手柄的**设备位姿**各偏一段——自身
 
 因此暂时不要把“应用硬编码偏移”或“只需把零件 OBJ 平移精确数值”写成定论。下一步应在真实游戏进程中捕获 render-model component state、应用创建的模型父节点和最终绘制矩阵，再与 compositor 的同一帧结果对照；继续改 `body`、`handgrip`、`openxr_grip`、地面高度或几何文件，只会重复已经做过的实验。
 
-> 2026-10-17 晚复盘：真因不在渲染模型 —— 驱动被 host 的 `apprun` 标志给位姿加了一段修正（每手 4.28cm、绕自身 `∓Z` 转 10.29°）。上面「应继续追模型父节点矩阵」的方向就此作废，保留这段只为记住做过的实验；继续读下面的「翻案」与「根因」。
+> 2026-10-17 晚复盘：真因不在渲染模型 —— 驱动被 host 的 `apprun` 标志给位姿加了一段修正（每手 4.28cm、绕自身 `∓Z` 转 10.29°）。上面「应继续追模型父节点矩阵」的方向就此作废，保留这段只为记住做过的实验；继续读下面的「翻案」与「改判」。
 
 ## 取证：逐层排除「像是根因」的候选
 
@@ -65,7 +64,7 @@ Scene app 占场景时，两只手柄的**设备位姿**各偏一段——自身
 ### 已排除：`mTrackingToComponentLocal` / Scene 挂接（死路，别重走）
 
 - 当时的假设：Scene app 把 `mTrackingToComponentLocal`（`[0,0.003,0.097]`）当作可见模型根，就会精确多出 9.70 cm。用一次性 Scene 探针验证过——把 local 矩阵当模型根确实能在真正的 compositor 帧里复现 9.70 cm 分离；而 Valve 的 Unity helper（`SteamVR_RenderModel.cs`，已核对过源码，副本不必留）也不会这么用：它把 `mTrackingToComponentRenderModel` 写给可见子节点，`local` 只喂 `attach` 点。
-- **真根因不是它**：实测两态下 12 个组件的 `mTrackingToComponentLocal` **逐字节相同**，变的是**设备位姿**（每手 4.28 cm / 10.29°），来源是 host 发的 `apprun` 消息（见下文「根因与修法」）。9.70 cm 与 `handgrip` 的 `+0.097` 只是数值巧合。
+- **真根因不是它**：实测两态下 12 个组件的 `mTrackingToComponentLocal` **逐字节相同**，变的是**设备位姿**（每手 4.28 cm / 10.29°），来源是 host 发的 `apprun` 消息（见 [04.e](04_e-driver-apprun-offset.md)）。9.70 cm 与 `handgrip` 的 `+0.097` 只是数值巧合。
 - 相关的一次性 Scene 探针与那份 `.cs` 副本都已随这条死路一起删掉；要重看「local 当模型根」，用 `GetComponentStateForDevicePath` 取矩阵相乘即可，不值得留脚本。
 
 ### VRChat/Unity OVRPlugin 的应用侧模型路径（2026-10-17）
@@ -155,25 +154,11 @@ Scene app 占场景时，两只手柄的**设备位姿**各偏一段——自身
   - **头显位姿完全不变**（`+0.07053/+0.71034/+0.13816` → `+0.07077/+0.71035/+0.13802`）⇒ 不是 universe origin 平移，是**逐设备**的位姿修正。
   - 杀游戏后再读，数值**逐位回到**正常值 ⇒ 是一个确定性的固定刚体变换，不是噪声。
 - ⇒ **模型本身没动，是喂给渲染器的位姿动了**。这解释了为什么所有资源侧改法（`body`/`handgrip` 原点归零、换模型名、补组件、平移 OBJ）都没用：它们改的是几何，而错在 pose。历史上的「9.7cm = `handgrip` 偏移」是**数值巧合**；真实每手漂移是 4.28cm，两只手柄相对位置偏 8.6cm，正好对应 `528→400px`。
-- **触发条件不是「声明 oculus 绑定」**：自制 Scene app 用 oculus-only manifest（一次性脚本，不入库；日志确认 `[Simulation] ... oculus_touch`、`type=oculus_touch`）占着 scene 时，位姿**逐位不变**、镜像里也不漂。⇒ 真 Steam 游戏（有 appid / vrmanifest、走 `vrclient_x64.dll`）还做了别的事才会触发这段修正。这是当时下一个要定位的点（下文「根因与修法」已定位：`apprun` 标志）。
-- **日志侧已定位到「兼容/重映射」这条链**（`Steam\logs\vrserver.txt`）：`steam.app.546560` 连接后立刻出现
+- **触发条件不是「声明 oculus 绑定」**：自制 Scene app 用 oculus-only manifest（一次性脚本，不入库；日志确认 `[Simulation] ... oculus_touch`、`type=oculus_touch`）占着 scene 时，位姿**逐位不变**、镜像里也不漂。⇒ 真 Steam 游戏（有 appid / vrmanifest、走 `vrclient_x64.dll`）还做了别的事才会触发这段修正。顺着这条线免游戏复现（`identifyApplication`）⇒ 定位到 host 的 `apprun` 标志；根因链与修法见 [04.e](04_e-driver-apprun-offset.md)。
+- **日志侧已定位到「兼容/重映射」这条链，但它不是答案**（`Steam\logs\vrserver.txt`）：`steam.app.546560` 连接后立刻出现
   - `[Input] steam.app.546560 (pico_controller) attempting to load default config from .../hlvr/cfg/bindings_touch.json`（Alyx 自己的 **oculus_touch** 绑定）
   - `[Remapping] Beginning remapping from controller type: oculus_touch to controller type: pico_controller` → 成功
-  - 而 `pico_controller_profile.json` 里写着 **`"compatibility_mode_controller_type": "oculus_touch"`** ⇒ 「没写 pico 绑定的 app 自动当 Oculus Touch」是驱动自己声明的，重映射与模拟都由此而来。
-- **下一步（按性价比排序）**：①把 Alyx 的 `bindings_touch.json` 当作自制 manifest 的 `oculus_binding` 再跑 standby 探针，看位姿是否跟着变（能一次性锁定是不是这份绑定/重映射引入的修正）；②换第二个游戏（VRChat / The Lab）看是否同样触发，确认是通病而不是 Alyx 特例；③若确认在重映射里，就去 `vrclient_x64.dll` 追 remap 的 pose 分支（上文「早期主线」里 `simulate_rendermodel` 的三档线索在 `sub_1802AB800` / `sub_18016FD20` 附近）。
-
-## 根因与修法：`apprun` 标志
-
-**根因链**：Steam 启动游戏 → PICO PC 侧 host 通过本机 socket 反复发 `apprun <n>` → `driver_pico.dll` 的收包线程 `sub_18002CE90` 用 `atoi` 写入全局 `dword_18009B080`（RVA `0x9B080`）→ 位姿发布函数 `sub_180018340` 读这个标志，给 `DriverPose_t` 多加一段 → 客户端读到的就是偏的。`apprun` 在整个 DLL 里只有这一处消费，所以补掉它不影响串流画质等其他行为。
-
-**取证**
-
-- **免游戏复现**：`IVRApplications::identifyApplication(pid, "steam.app.<已安装id>")` 把空进程挂到某个已安装 Steam 应用上，约 2 秒内进入漂移，进程退出即恢复。换 `openvr.tool.steamvr_room_setup` 这类工具 key 不触发 ⇒ 只有被当成「Steam 游戏」才偏。
-- **发布函数入口/出口成对取值**：输入 `(+1.01164,+0.55034,+1.08921)` 两态**一字不差**，写出的 `vPosition` 不同（`+0.97067,…` vs `+0.92877,…`），而出口值就是客户端读到的值 ⇒ 偏移由驱动产生，vrserver 只转发。
-- **整个 `.data`（10.7 KB）两态只差两处**，其一是 `0x9B080`（0→1）。
-- **闭环**：漂移态下每 5 ms 把该标志写 0，位姿立刻回到基线（`+0.90857/+0.97067`），停止写入又回漂移。
-
-**修法**：`patch_driver.ps1` 把写标志前的 `call atoi` 换成 `xor eax, eax`（零长度变化）⇒ 标志恒 0。验证：identify 测试 **4.28 cm → 0.04 cm**；The Lab 运行中位姿保持基线、两只模型分开。
+  - 而 `pico_controller_profile.json` 里写着 **`"compatibility_mode_controller_type": "oculus_touch"`** ⇒ 「没写 pico 绑定的 app 自动当 Oculus Touch」是驱动自己声明的，重映射与模拟都由此而来；但换绑定 / 改 profile 的 A/B 都不改变漂移（见「已排除」）。
 
 ## 已排除（都有数值或 A/B 证据，别再试）
 
@@ -184,16 +169,3 @@ Scene app 占场景时，两只手柄的**设备位姿**各偏一段——自身
 - **不是预测外推**：−0.05…+0.5 s 各预测一遍结果完全相同、速度全 0。
 - **不是 `vrlink`**（Steam Link 驱动）：虽加载并连着头显 IP，但从未建立会话（`Null VTE_CLIENT_SESSION_ID`）。**不是 `app_check.exe`**：连续 kill 不影响。
 - `[poseFeeder] initialOffset*` 只影响头显高度；`debug.log` / `sendlog*.txt` 不含位姿数值。
-
-## 旁证与方法论
-
-**公开资料对上了**：[SteamVR 论坛「Offset problems using Pico 4 controllers」](https://steamcommunity.com/app/250820/discussions/0/3828666917400432090) 里 PICO 用户描述「in game hands are being offset and appearing at the wrong angle」「It starts from the tip of controllers and angled」，与实测的 **4.28 cm + 10.29°（不是单纯平移）**逐条吻合；那边把控制器显示成 Quest 2 手柄后偏移消失，本质也是换了位姿约定。
-
-**两个方法论坑（下次省时间）**
-
-- 只 hook 发布函数的**入口**会得出「驱动没变」的错误结论——必须入口 + 出口成对取值。
-- `identifyApplication` 之后漂移态会**卡住**（vrserver 一直以为应用在跑）；每次测量前重启 SteamVR，并先打印一次基线位姿确认（`dev2.x≈+0.97067` 干净 / `≈+0.92877` 已卡住）。
-
-## 后续（已拆篇）
-
-修掉 `apprun` 偏移后，应用里的虚拟手仍然不在手心、手臂伸不直——那是**另一个**问题：手和模型吃的是同一个 device pose。实验与定稿见 [04.f](04_f-driver-hand-grip.md)；本篇只保留「4.28cm / 10.29° 偏移」这条线。

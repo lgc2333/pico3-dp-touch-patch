@@ -46,7 +46,7 @@ profile 按 `controllertype` 二选一（`GetPrivateProfileIntW("PICO","controll
 量到的事实：
 
 - 以 app 身份（Scene 应用）读设备属性 = 一整套冒充的 Oculus：`ControllerType=oculus_touch`、`RenderModelName=oculus_quest2_controller_left`、`ModelNumber=Oculus Quest2 (Left Controller)`、`TrackingSystem=oculus`、`Manufacturer=Oculus`（用 `getStringTrackedDeviceProperty` 逐个属性读一遍即可；原一次性探针已删）。
-- 但 Home 的客户端日志（`Steam\logs\vrclient_steamtours.txt`）显示它加载的**几何是 PICO 的**：`...\BusinessStreamingDP\driver\resources\rendermodels\pico_neo3_*controller\*.obj` —— 即"名字是 Oculus、几何是 PICO"（与 [04.e](04_e-driver-offset.md) 的日志对照一致）。
+- 但 Home 的客户端日志（`Steam\logs\vrclient_steamtours.txt`）显示它加载的**几何是 PICO 的**：`...\BusinessStreamingDP\driver\resources\rendermodels\pico_neo3_*controller\*.obj` —— 即"名字是 Oculus、几何是 PICO"（与 [04.f](04_f-driver-offset-investigation.md) 的日志对照一致）。
 
 **试过的改动**：删掉 `resources\input\pico_controller_profile.json` 里的 `"compatibility_mode_controller_type": "oculus_touch",`（OpenVR 文档 _Binding Duplication_：找不到 app 绑定时会用被模拟设备的 profile **并设置模拟属性**）⇒ **实测：Home 手型不变、游戏里 ≈9cm 偏移也不变**。
 
