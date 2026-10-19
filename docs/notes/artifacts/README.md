@@ -6,5 +6,6 @@
 - **路径**：脚本里若出现 `D:\Program Files\BusinessStreaming\...`（驱动的 `hidapi.dll` /
   `openvr_api.dll` / `driver_pico.dll`），请按本机 Business Streaming DP 的实际安装位置修改。
 - `gh-scripts/` 是 Ghidra headless 的 `.java` 脚本（用法见 [`../07-tooling.md`](../07-tooling.md)）。
+- `joystick-viewer/` 是摇杆平面与支点的网页查看器（用法见它自己的 README）；结论见 [`../04_g-driver-hand-grip.md`](../04_g-driver-hand-grip.md)。
 
 未包含：原始抓包日志（`*.log`，体积大且与具体设备会话绑定）、`openvr.h`、厂商驱动副本等。

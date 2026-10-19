@@ -1,52 +1,22 @@
 ﻿<#
 patch_driver.ps1 —— 给 PICO DP 驱动打补丁
 
-改动 A（零长度变化）：
-    /input/trigger/touch   ← 键值字 bit5   (原: 扳机模拟量 != 0)
-    /input/joystick/touch  ← 键值字 bit7   (原: 摇杆偏离中位)
-    kTriggerTouch 调试打印 ← 恒跳过        (厂商遗留：拉扳机时以 ~200 Hz 刷 SteamVR Console；见 docs/notes/04_c-driver-touch-patch.md)
+补的东西（机制、数值、证伪记录都在 docs/notes/ 里，这里只列指针）：
+    触摸位      /input/{trigger,joystick}/touch；顺带关掉厂商遗留的调试打印       04_c-driver-touch-patch.md
+    骨架段      新增 `.pitouch`：/pose/raw + /skeleton/*（游戏里的手指动画）      04_d-driver-skeleton.md
+    位姿标志    忽略 PC 侧发来的 `apprun`：游戏里手柄偏 4cm / 10° 就是它   04_e-driver-apprun-offset.md
+    握把位姿    `RVRPlugin.ini` 的 [controller] + 顶点与活动部件 motion 的反向补偿 04_g-driver-hand-grip.md
+        （含活动部件支点；摇杆还要改支点 / 转轴 / 倾角）
+    顺手修      profile 的 `/input/application_menu`、JSON 的 `tip` 笔误、补厂商漏发的
+        pico_hmd_profile.json                                                   04-driver.md
 
-改动 B（新增一个 PE 段 .pitouch，DLL 变大 ~63 KB）：
-    补上 DP 驱动缺的 pose/raw + skeleton 输出（Alyx 的手指动画走 skeleton，不是 capsense 绑定）。
-    `driver_patch\dp_skeleton_payload.bin` 是从 v2 驱动整段搬来的骨架代码（生成器 + 姿势表 + slerp +
-    每帧更新器）加上两段跳板；本脚本把它作为一个新段塞进 DLL，再把「建组件」和「输入更新」两处改成
-    跳进跳板。算法、位映射、为什么这么搬：见 docs/notes/04_d-driver-skeleton.md。
-
-改动 C（零长度变化）：**修掉「游戏里手柄偏 ~4cm / 10°」**
-    PC 侧 host 检测到 Steam 游戏启动后，会通过本机 socket 反复给驱动发 `apprun <n>`；驱动用 atoi
-    存进 dword_18009B080，发布手柄位姿时读这个标志，于是游戏态的手柄位姿被额外偏了一段。
-    把这次 atoi 调用换成 `xor eax, eax`，标志恒 0，游戏里的位姿与桌面/待机一致。
-    实测：补完用真游戏（The Lab）验证，模型不再并到一起。详见 docs/notes/04_e-driver-offset.md。
-
-改动 D（只改两个文本资源，不改 DLL）：**让虚拟手落在握把上，模型仍和实物对齐**
-    驱动把 device pose 报在跟踪环附近，而 VRChat 这类 app 的虚拟手吃的是同一个 device pose
-    ⇒ 手比握把低 ~4cm / 10°。这里把发布的位姿挪到握把点（RVRPlugin.ini 的 [controller] 偏移），
-    再把渲染模型顶点做反向平移+旋转（从 .orig 重算），于是手落在握把上、模型仍留在物理位置。
-    活动部件（扳机 / 握把键 / 摇杆 / 按键）的 motion 参数（pivot / center / axis / press_translate）
-    和顶点同处模型空间，必须做同一套逆变换，否则扳机会绕错的支点转（见 04_f）。
-    改动 C 的 apprun 是同一件事的「只移位姿、不补模型」版本；本项是它的正解。
-    数值、公式、证伪记录：见 docs/notes/04_f-driver-hand-grip.md。
-
-顺手修 profile：`resources\input\pico_controller_profile.json` 里的 `"input/application_menu"` 少一个 `/`，
-    这条声明不生效 ⇒ menu 键在 SteamVR 里没反应；补成 `"/input/application_menu"`（实测补完 menu / system 键都正常）。
-    只改 JSON 文本，DLL 不读这个文件；备份为同名 `.orig`。
-
-顺手修渲染模型：`resources\rendermodels\*\*.json` 里 `tip` 的角度笔误改回 `-1.282`
-    （UW / v2 / neo2 都是这个值；DP 那份写成了 `-21.282,3,0`）。每个文件备份为同名 `.orig`。
-    改动 D 的 motion 参数也从同一份 `.orig` 重算，所以这一改合并进手柄阶段、不再单独就地改。
-    游戏里手柄偏的是「app 位姿」那条路，由改动 C 修；与这里的几何无关（SteamVR 菜单与游戏用的是同一份几何）。
-
-补厂商漏发的 input profile：`resources\input\pico_hmd_profile.json`（驱动每次启动都在找这个文件，
-    找不到就报 `Failed to load input profile`）。新版 UW 驱动自带这份，内容照抄，只去掉 DP 里不存在的图标引用。
-
-前置：必须以管理员运行；SteamVR / Business StreamingDP 必须已退出。
-自动备份为 driver_pico.dll.orig，并校验原字节。
+前置：管理员运行；SteamVR、Steam 客户端、Business Streaming DP 先退出。
+每次改动都备份成同名 `.orig`、写入前校验原字节（DLL 另加 md5）；重跑幂等，一律从 `.orig` 重算。
 
 参数：
     -Dll  目标 driver_pico.dll 路径（默认自动探测）
 
-用法：双击 src\windows\patch_driver.bat（或直接跑本脚本）
-        没提权时脚本会自己弹 UAC 提权，提权窗口用 cmd /k 保住好读输出
+用法：双击 src\windows\patch_driver.bat；没提权时脚本会自己弹 UAC（提权窗口用 cmd /k 保住输出）。
 #>
 [CmdletBinding()]
 param(
@@ -347,15 +317,15 @@ else {
     }
 }
 
-# --- 改动 D：手柄握把位姿（见文件头与 docs/notes/04_f-driver-hand-grip.md）---
+# --- 改动 D：手柄握把位姿（见文件头与 docs/notes/04_g-driver-hand-grip.md）---
 # 位姿与模型必须成对改：ini 把 device pose 挪到握把点，模型（顶点 + 活动部件 motion）反向补偿留在物理位置。
 # 顶点与 motion 参数都从 .orig 重算；两份 JSON 与 17 个 OBJ 的原始指纹必须匹配（换了版本就中止，别硬移）。
 $resRoot = Join-Path (Split-Path (Split-Path (Split-Path $dll -Parent) -Parent) -Parent) 'resources'
 $rmRoot = Join-Path $resRoot 'rendermodels'
 $handObjSha = '6a6e82bfda8ac4ad7937905bb8cf2691db51c6e22674ce6ec6afecff110dc208'
 $handCfgs = @(
-    [pscustomobject]@{ Dir = 'pico_neo3_leftcontroller'; Tx = 0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = -0.99; Roll = 10.23; JsonSha = 'e76a4b77b0aaa5e1f252085423dde481e8268d9dc666e9ea8457bebb857763bf' },
-    [pscustomobject]@{ Dir = 'pico_neo3_rightcontroller'; Tx = -0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = 0.99; Roll = -10.23; JsonSha = '6dd340dc1babee10b13d0e625f99ab8348f18a17c6480631a6e9e4b489805d2e' }
+    [pscustomobject]@{ Dir = 'pico_neo3_leftcontroller'; Tx = 0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = -0.99; Roll = 10.23; JsonSha = 'e76a4b77b0aaa5e1f252085423dde481e8268d9dc666e9ea8457bebb857763bf'; JoyCenterOrig = @(0, 0, 0.02); JoyCenter = @(-0.0158132, 0.0240547, 0.0262966); JoyRotateXyz = @(-3.187, -156.680, 161.960); JoyTiltOrig = @(6.5, -6.5); JoyTiltX = @(-12, 12); JoyTiltY = @(12, -12) },
+    [pscustomobject]@{ Dir = 'pico_neo3_rightcontroller'; Tx = -0.0099; Ty = 0.0115; Tz = -0.0401; Yaw = 0.99; Roll = -10.23; JsonSha = '6dd340dc1babee10b13d0e625f99ab8348f18a17c6480631a6e9e4b489805d2e'; JoyCenterOrig = @(0, 0, 0.03); JoyCenter = @(0.0158126, 0.024063, 0.0262877); JoyRotateXyz = @(3.188, -156.715, -161.959); JoyTiltOrig = @(6.5, -6.5); JoyTiltX = @(-12, 12); JoyTiltY = @(12, -12) }
 )
 $inv = [System.Globalization.CultureInfo]::InvariantCulture
 
@@ -412,10 +382,14 @@ function Format-HandXyz([double[]]$V) {
     return '[' + ($parts -join ', ') + ']'
 }
 
-function Read-HandXyz([string]$Text) {
+function Read-HandNums([string]$Text, [int]$Count) {
     $parts = @($Text.Split(',') | ForEach-Object { [double]::Parse($_.Trim(), $inv) })
-    if ($parts.Count -ne 3) { Die "motion 参数不是三维数组：[$Text]。可能不是支持的版本。" }
+    if ($parts.Count -ne $Count) { Die "motion 参数不是 $Count 个分量：[$Text]。可能不是支持的版本。" }
     return $parts
+}
+
+function Read-HandXyz([string]$Text) {
+    return Read-HandNums -Text $Text -Count 3
 }
 
 # motion 块可能跨多行；从 `"motion": {` 起按花括号配平找结尾
@@ -428,6 +402,18 @@ function Get-MotionBlockEnd {
         if ($depth -le 0) { return $i }
     }
     return -1
+}
+
+function Assert-HandXyz {
+    param($Cfg, [double[]]$Got, [double[]]$Want, [string]$What)
+    if (@($Got).Count -ne @($Want).Count) {
+        Die ("{0}.json 复核失败：{1} = [{2}]（{3} 个分量，预期 {4} 个）。" -f $Cfg.Dir, $What, ($Got -join ', '), @($Got).Count, @($Want).Count)
+    }
+    for ($k = 0; $k -lt @($Want).Count; $k++) {
+        if ([math]::Abs([double]$Got[$k] - [double]$Want[$k]) -gt 1e-6) {
+            Die ("{0}.json 复核失败：{1} = [{2}]。" -f $Cfg.Dir, $What, ($Got -join ', '))
+        }
+    }
 }
 
 # `.orig` = 脚本动手前那一刻的副本；不是厂商原件（指纹不符）就中止，别硬移
@@ -461,23 +447,60 @@ function Convert-HandJson {
 
     $motions = 0
     $keys = 0
+    $joyBlocks = 0
     for ($i = 0; $i -lt $lines.Length; $i++) {
         if ($lines[$i] -notmatch '^\s*"motion"\s*:\s*\{') { continue }
         $end = Get-MotionBlockEnd -Lines $lines -Start $i
         if ($end -lt 0) { Die "$($Cfg.Dir).json 的 motion 块不闭合。可能不是支持的版本。" }
         $motions++
+        # 摇杆块的标志：两轴限位参数（扳机 / 握把键 / 按键块里没有）
+        $isJoy = $false
         for ($j = $i; $j -le $end; $j++) {
-            if ($lines[$j] -match '^(\s*"(pivot|center|axis|press_translate)"\s*:\s*)\[([^\]]*)\](.*)$') {
+            if ($lines[$j] -match '^\s*"joystick_rotation_x"\s*:') { $isJoy = $true; break }
+        }
+        if ($isJoy) { $joyBlocks++ }
+        for ($j = $i; $j -le $end; $j++) {
+            if ($isJoy -and $lines[$j] -match '^(\s*"press_translate"\s*:\s*)\[([^\]]*)\](.*)$') {
+                # press 活在 S 坐标系里（vrserver 算 c + S·press），握把旋转不该碰它：原样保留才正好沿轴压 2.5 mm
+                Assert-HandXyz -Cfg $Cfg -Got (Read-HandXyz $Matches[2]) -Want (Read-HandXyz '0, -0.0025, 0') -What '摇杆 press_translate（厂商原值）'
+                $keys++
+            }
+            elseif ($lines[$j] -match '^(\s*"(pivot|center|axis)"\s*:\s*)\[([^\]]*)\](.*)$') {
                 $prefix = $Matches[1]
                 $key = $Matches[2]
                 $v = Read-HandXyz $Matches[3]
                 $suffix = $Matches[4]
+                if ($isJoy -and $key -eq 'center') {
+                    # 厂商的摇杆支点不在摇杆轴上（离轴 ~25 mm、左右各写一个值）：换成**杆轴与平面的交点、再沿法线下 4.0 mm**
+                    # 的点再变换（4.0 mm 与 12° 倾角由用户在查看器里按手感选定，见 docs/notes/artifacts/joystick-viewer 与 04_g）
+                    for ($k = 0; $k -lt 3; $k++) {
+                        if ([math]::Abs($v[$k] - $Cfg.JoyCenterOrig[$k]) -gt 1e-9) {
+                            Die ("$($Cfg.Dir).json 的摇杆 center 不是支持的版本（{0}）。已中止，未写入。" -f (Format-HandXyz $v))
+                        }
+                    }
+                    $v = @($Cfg.JoyCenter)
+                }
                 $nv = Convert-HandXyz -Cfg $Cfg -X $v[0] -Y $v[1] -Z $v[2] -Point:($key -eq 'pivot' -or $key -eq 'center')
                 $lines[$j] = $prefix + (Format-HandXyz $nv) + $suffix
                 $keys++
             }
+            elseif ($isJoy -and $lines[$j] -match '^(\s*"rotate_xyz"\s*:\s*)\[([^\]]*)\](.*)$') {
+                # 摇杆：厂商按「摇杆沿 Y 轴」写这套参数，网格里摇杆沿实测按键平面的法向 ⇒ 用 rotate_xyz 把
+                # vrserver 写死的两个转轴（X / Z）共轭到平面内；平面内的「上」取「握把中点 → system 键」的投影，
+                # 再按手感多转 1.37°（合计偏世界 up 2.40°），不取世界 up（见 04_g）。
+                # 顶点先被握把矩阵转过 ⇒ S 要按旋转后的法向 R·n 重算（用变换前的法向会让轴向偏 ~1°）。
+                Assert-HandXyz -Cfg $Cfg -Got (Read-HandXyz $Matches[2]) -Want @(0, 0, 0) -What '摇杆 rotate_xyz（厂商原值）'
+                $lines[$j] = $Matches[1] + (Format-HandXyz $Cfg.JoyRotateXyz) + $Matches[3]
+            }
+            elseif ($isJoy -and $lines[$j] -match '^(\s*"joystick_rotation_([xy])"\s*:\s*)\[([^\]]*)\](.*)$') {
+                # 倾角：12° 由用户在查看器里按手感选定（厂商 6.5°）。X 取 [-12, 12] = 推右向右倒；
+                # Y 取反 [12, -12] = 推上向上倒（两轴同号时实机 y 轴反向，见 docs/notes/04_g）
+                $tilt = if ($Matches[2] -eq 'x') { $Cfg.JoyTiltX } else { $Cfg.JoyTiltY }
+                Assert-HandXyz -Cfg $Cfg -Got (Read-HandNums -Text $Matches[3] -Count 2) -Want $Cfg.JoyTiltOrig -What '摇杆倾角（厂商原值）'
+                $lines[$j] = $Matches[1] + (Format-HandXyz $tilt) + $Matches[4]
+            }
             elseif ($lines[$j] -match '^\s*"rotate_xyz"\s*:\s*\[([^\]]*)\]') {
-                # 活动部件自身的初始朝向；现有模型全为 0，出现非 0 说明版本变了
+                # 其余活动部件自身的初始朝向；现有模型全为 0，出现非 0 说明版本变了
                 $v = Read-HandXyz $Matches[1]
                 if (@($v | Where-Object { [math]::Abs($_) -gt 1e-9 }).Count -gt 0) {
                     Die "$($Cfg.Dir).json 的 motion.rotate_xyz 非零。没有对应补偿，已中止。"
@@ -486,8 +509,8 @@ function Convert-HandJson {
         }
         $i = $end
     }
-    if ($motions -ne 7 -or $keys -ne 10) {
-        Die ("$($Cfg.Dir).json 的 motion 块数 = {0}，几何参数 = {1}（预期 7/10）。可能不是支持的版本。" -f $motions, $keys)
+    if ($motions -ne 7 -or $keys -ne 10 -or $joyBlocks -ne 1) {
+        Die ("{0}.json 的 motion 块数 = {1}（摇杆块 {2}），几何参数 = {3}（预期 7 / 1 / 10）。可能不是支持的版本。" -f $Cfg.Dir, $motions, $joyBlocks, $keys)
     }
 
     $tipBad = '[-21.282,3.0,0.0]'  # DP 独有；UW / v2 / neo2 都是 -1.282
@@ -507,16 +530,21 @@ function Convert-HandJson {
     }
     [System.IO.File]::WriteAllText($json, $out, (New-Object System.Text.UTF8Encoding($bom)))
 
-    # 复核：JSON 仍合法、tip 笔误已消失、扳机支点确实落在补偿后的位置
+    # 复核：JSON 仍合法、tip 笔误已消失、扳机与摇杆支点确实落在补偿后的位置
     $chk = [System.IO.File]::ReadAllText($json, [System.Text.Encoding]::UTF8)
     try { $obj = $chk | ConvertFrom-Json } catch { Die "$($Cfg.Dir).json 内容损坏，不再是合法 JSON。" }
     if ($chk.Contains($tipBad)) { Die "$($Cfg.Dir).json 复核失败：tip 角度未修正。" }
     try { $got = @($obj.components.trigger.motion.pivot) } catch { Die "$($Cfg.Dir).json 复核失败：未找到 trigger.motion.pivot。" }
-    $want = Convert-HandXyz -Cfg $Cfg -X 0 -Y 0.012 -Z 0.012 -Point
-    for ($k = 0; $k -lt 3; $k++) {
-        if ([math]::Abs([double]$got[$k] - [double]$want[$k]) -gt 1e-6) {
-            Die "$($Cfg.Dir).json 复核失败：扳机支点 = [$($got -join ', ')]。"
-        }
+    Assert-HandXyz -Cfg $Cfg -Got $got -Want (Convert-HandXyz -Cfg $Cfg -X 0 -Y 0.012 -Z 0.012 -Point) -What '扳机支点'
+    try { $got = @($obj.components.joystick.motion.center) } catch { Die "$($Cfg.Dir).json 复核失败：未找到 joystick.motion.center。" }
+    $want = Convert-HandXyz -Cfg $Cfg -X $Cfg.JoyCenter[0] -Y $Cfg.JoyCenter[1] -Z $Cfg.JoyCenter[2] -Point
+    Assert-HandXyz -Cfg $Cfg -Got $got -Want $want -What '摇杆支点'
+    try { $got = @($obj.components.joystick.motion.rotate_xyz) } catch { Die "$($Cfg.Dir).json 复核失败：未找到 joystick.motion.rotate_xyz。" }
+    Assert-HandXyz -Cfg $Cfg -Got $got -Want $Cfg.JoyRotateXyz -What '摇杆轴重映射'
+    foreach ($k in 'joystick_rotation_x', 'joystick_rotation_y') {
+        try { $got = @($obj.components.joystick.motion.$k) } catch { Die "$($Cfg.Dir).json 复核失败：未找到 joystick.motion.$k。" }
+        $want = if ($k -eq 'joystick_rotation_x') { $Cfg.JoyTiltX } else { $Cfg.JoyTiltY }
+        Assert-HandXyz -Cfg $Cfg -Got $got -Want $want -What "摇杆倾角 $k"
     }
     return 1
 }
@@ -581,7 +609,7 @@ foreach ($c in $handCfgs) {
     $jn = Convert-HandJson -Cfg $c
     if ($jn -gt 0) {
         $handChanged = $true
-        Write-Host "[+] $($c.Dir).json：扳机等活动部件的支点与轴已反向补偿" -ForegroundColor Green
+        Write-Host "[+] $($c.Dir).json：活动部件的支点与轴已补偿；摇杆支点已挪到摇杆轴上、转轴已重映射" -ForegroundColor Green
     }
 }
 # ini：把 [controller] 段换成目标值（只动这一段，其它配置原样保留）

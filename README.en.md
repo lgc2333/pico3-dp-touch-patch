@@ -27,7 +27,7 @@ The driver patch also fixes some problems. It also adds one data output that the
 - **The `tip` component of the controller model has an incorrect angle.** Only the DP build has this defect.
 - **The driver reports a profile load error at each start.** The vendor did not supply the headset profile `pico_hmd_profile.json`.
 - **Games do not animate the fingers.** The patch adds `/pose/raw` and `/skeleton/*`. Games such as Alyx read these paths to animate the fingers.
-- **In games, the controller models are approximately 4 cm from the correct position and have a small tilt.** When a game starts, the streaming app sends an `apprun` message to the driver. The driver then adds a pose offset. The patch makes the driver ignore this message. The pose in the game then matches the SteamVR menu and standby pose. This 4 cm offset also hid a second defect: the driver reports the pose near the tracking ring. A virtual hand that uses this pose is approximately 4 cm below the grip, and the arm does not straighten. The patch moves the pose to the grip point. It also compensates the model vertices in the opposite direction. The hand then sits on the grip, and the controller model stays aligned with the real controller.
+- **In games, the controller models are approximately 4 cm from the correct position and have a small tilt.** When a game starts, the streaming app sends an `apprun` message to the driver. The driver then adds a pose offset. The patch makes the driver ignore this message. The pose in the game then matches the SteamVR menu and standby pose. This 4 cm offset also hid a second defect: the driver reports the pose near the tracking ring. A virtual hand that uses this pose is approximately 4 cm below the grip, and the arm does not straighten. The patch moves the pose to the grip point. It also compensates the model vertices in the opposite direction. The hand then sits on the grip, and the controller model stays aligned with the real controller. The pivots of the moving parts move together with the vertices. Without this step, the trigger and the stick turn about the wrong point. The joystick parameters have a further vendor error: they are written for another axis. The patch moves the joystick pivot and the rotation axes onto the joystick axis, calculated from the model geometry.
 
 ## Requirements
 
@@ -82,6 +82,8 @@ If you also want to downgrade the PC side, the script asks you to download the i
 Open SteamVR → Settings → Controllers → **Test Controllers**. Touch A/B/X/Y, the triggers and the stick tops one by one. A highlight shows that the touch point works.
 
 Also look at the controllers. The virtual hand must sit on the grip. The controller model must stay aligned with the real controller.
+
+Then pull the triggers and push the sticks. Each trigger must turn about its own axis. Each stick must turn about its own axis, and the cap must not slide.
 
 ## Revert and uninstall
 
