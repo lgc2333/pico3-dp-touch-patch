@@ -18,8 +18,8 @@ echo '[i] 2/2 安装短命令 dptouch'
 mkdir -p "$PREFIX/bin"
 # symlink 没问题，关键是**由 app 自己建**：这样才带 app 的 SELinux 类别（root 建的条目会让 app 连 stat 都 Permission denied）
 ln -sf "$D/dptouch.sh" "$PREFIX/bin/dptouch" || {
-    echo '[X] 无法创建 symlink。可能存在旧条目（由 root 创建，SELinux 类别不正确）。'
-    echo '    请在 PC 上重新运行 push.bat。它会先删除再创建。也可以用 root 删除该条目。'
+    echo '[X] 无法创建 symlink，可能存在旧条目（由 root 创建，SELinux 类别不正确）。'
+    echo '    请在 PC 上重新运行 push.bat，它会先删除再创建；也可以用 root 删除该条目。'
     exit 1
 }
 

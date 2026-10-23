@@ -70,7 +70,7 @@ function Expand-Xz([string]$xz, [string]$out) {
     if ($sevenz) {
         & $sevenz x -y -aoa "-o$out" "$xz" *> $null
         if ($LASTEXITCODE -eq 0) { return $true }
-        Write-Host '[!] 未找到 7z。改用 tar 解压。' -ForegroundColor Yellow
+        Write-Host '[!] 未找到 7z，改用 tar 解压。' -ForegroundColor Yellow
     }
     try {
         & tar -xf $xz -C $out 2>$null
@@ -79,7 +79,7 @@ function Expand-Xz([string]$xz, [string]$out) {
     catch {
         Write-Verbose "tar 起不来（$($_.Exception.Message)），换 xz 解压"
     }
-    Write-Host '[!] tar 也不可用。改用 xz 解压。' -ForegroundColor Yellow
+    Write-Host '[!] tar 也不可用，改用 xz 解压。' -ForegroundColor Yellow
     $xzc = Get-ExePath xz
     if ($xzc) {
         & $xzc -dc "$xz" > (Join-Path $out $InjName)
@@ -113,8 +113,8 @@ if ($Force -or -not (Test-Path $Haxx)) {
 
     $md5 = (Get-FileHash $raw -Algorithm MD5).Hash.ToLower()
     if ($md5 -ne $HaxxMd5) {
-        Write-Host "[X] 上游 picohaxx md5 = $md5。预期 $HaxxMd5。" -ForegroundColor Red
-        Write-Host '    上游已更新。补丁偏移需要重新确认（见 docs/notes/06-root.md）。已中止，未写入。' -ForegroundColor Red
+        Write-Host "[X] 上游 picohaxx md5 = $md5，预期 $HaxxMd5。" -ForegroundColor Red
+        Write-Host '    上游已更新，补丁偏移需要重新确认（见 docs/notes/06-root.md）。已中止，未写入。' -ForegroundColor Red
         exit 1
     }
 
@@ -125,7 +125,7 @@ if ($Force -or -not (Test-Path $Haxx)) {
         Write-Host "[X] 固件串不匹配：'$fw'（预期 '5.9.9-202408300028'）。已中止。" -ForegroundColor Red; exit 1
     }
     if ($bytes[0x164ef9] -ne 0xB0) {
-        Write-Host ("[X] 补丁点 0x164ef9 = 0x{0:X2}（预期 0xB0）。上游更换了构建。补丁偏移需要重新确认（见 docs/notes/06-root.md）。已中止。" -f $bytes[0x164ef9]) -ForegroundColor Red; exit 1
+        Write-Host ("[X] 补丁点 0x164ef9 = 0x{0:X2}（预期 0xB0）。上游更换了构建，补丁偏移需要重新确认（见 docs/notes/06-root.md）。已中止。" -f $bytes[0x164ef9]) -ForegroundColor Red; exit 1
     }
 
     [byte[]]$new = [System.Text.Encoding]::ASCII.GetBytes('202409100313') + [byte[]](0, 0, 0, 0, 0, 0)
@@ -154,7 +154,7 @@ if ($PlatformTools -and ($Force -or -not (Test-Path $PtExe))) {
 
     $md5 = (Get-FileHash $zip -Algorithm MD5).Hash.ToLower()
     if ($md5 -ne $PtMd5) {
-        Write-Host "[X] platform-tools md5 = $md5。预期 $PtMd5。" -ForegroundColor Red
+        Write-Host "[X] platform-tools md5 = $md5，预期 $PtMd5。" -ForegroundColor Red
         Write-Host '    新版本需要重新确认 md5。已中止，未写入。' -ForegroundColor Red
         exit 1
     }

@@ -30,7 +30,7 @@ $Sd = "/sdcard/Download/$DirName"
 # --- 认头显 ---
 $IpFile = Join-Path $P.Cache '.headset_ip'
 $sel = Select-Headset -Adb $Adb -Serial $Serial -IpFile $IpFile
-if (-not $sel) { Write-Host '[X] 未找到头显。已取消。' -ForegroundColor Red; exit 1 }
+if (-not $sel) { Write-Host '[X] 未找到头显，已取消。' -ForegroundColor Red; exit 1 }
 $target = $sel.Target
 Write-Host "[+] 已选择头显：$target" -ForegroundColor Green
 

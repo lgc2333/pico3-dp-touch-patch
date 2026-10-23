@@ -121,6 +121,7 @@ adb shell 'ls -la /data/data/com.termux/files/home/pico_touch; ls -l /data/data/
 ### 改动连带面
 
 - `README.md` / `README.en.md` 面向用户：只写用户看得见的影响（能做什么、要准备什么、怎么还原），保持简短；机制、偏移、验证进 `docs/notes/`。两份逐节对应，改一份必改另一份。
+- 两份 README 与脚本提示按 ASD-STE100 写，但它的短句规则只针对英文：英文一句限 20 词，直译成中文常只剩七八个字，读起来像电报，反而更费解。中文文案把同一层意思的相邻短句用逗号连起来，句号只留在一段意思结束时；术语、状态值、诊断信息仍照原样保留。
 - 改脚本行为或路径 → 同步两份 README、本文件与相关 notes；运行期提示语以 README 为唯一权威，别在多处各抄一份。
 - 驱动补丁的字节数只在 `docs/notes/04_c-driver-touch-patch.md` 与 `04_d-driver-skeleton.md` 各记一次 —— 两份 README、本文件与其它 notes 一律不写数字，省得每次动补丁都要全仓库同步。
 - 文档分三层：**实测 / 推测 / 设计选择**；「我们没这么做」不等于「做不到」（app 域直跑 + `settings` 垫片其实可行）。结论变了把旧说法一起改。

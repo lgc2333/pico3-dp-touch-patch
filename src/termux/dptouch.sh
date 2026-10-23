@@ -54,8 +54,8 @@ run() {
     }
     if ! command -v adb >/dev/null 2>&1 || ! adb version >/dev/null 2>&1; then
         if command -v pkg >/dev/null 2>&1; then
-            echo '[!] adb 不存在或无法运行（CANNOT LINK EXECUTABLE 表示包过旧或安装损坏）。请先更新系统包。然后安装 adb。'
-            echo '[i] 运行 pkg update、pkg upgrade 和 pkg install android-tools。可能需要几分钟。输出会完整显示。'
+            echo '[!] adb 不存在或无法运行（CANNOT LINK EXECUTABLE 表示包过旧或安装损坏）。请先更新系统包，然后安装 adb。'
+            echo '[i] 运行 pkg update、pkg upgrade 和 pkg install android-tools，可能需要几分钟，输出会完整显示。'
             export DEBIAN_FRONTEND=noninteractive
             # 别把 pkg 的输出吞掉（静默几分钟用户会以为卡死），也别收窄它
             pkg update -y && pkg upgrade -y -o Dpkg::Options::=--force-confnew && pkg install -y android-tools || true
@@ -71,7 +71,7 @@ run() {
     if ! up 6; then
         echo "[X] 无法连接本机 adbd。adb devices 输出："
         adb devices 2>&1 | sed 's/^/    /'
-        echo "    请在头显「设置 → 开发者选项」中打开 adb 或无线调试。adbd 需要在 $PORT 上监听。"
+        echo "    请在头显「设置 → 开发者选项」中打开 adb 或无线调试，adbd 需要在 $PORT 上监听。"
         return 1
     fi
     echo "[+] 已选择头显：$DEV"
@@ -80,20 +80,20 @@ run() {
     for p in picohaxx:picohaxx.neo3.bin frida-inject:frida-inject hook.js:hook.js start_touch.sh:start_touch.sh; do
         dst=${p%%:*}
         src=${p#*:}
-        L=$(kit "$src") || { echo "[X] kit 中缺少 $src。请在 PC 上重新运行 push.bat，推送完整 kit。"; return 1; }
+        L=$(kit "$src") || { echo "[X] kit 中缺少 $src，请在 PC 上重新运行 push.bat 推送完整 kit。"; return 1; }
         A shell "rm -f $TMP/$dst" >/dev/null 2>&1 || true   # 上一次可能是 root 属主，先删才覆盖得动
         A push "$L" "$TMP/$dst" >/dev/null 2>&1 || { echo "[X] 推送 $dst 失败。"; return 1; }
     done
     A shell "chmod 755 $TMP/picohaxx $TMP/frida-inject $TMP/start_touch.sh; chmod 644 $TMP/hook.js" >/dev/null 2>&1
     echo "[+] 设备端文件已就位（$TMP）"
 
-    echo "[i] 第 3/4 步：提权。将 adbd 替换为 root 版本。"
+    echo "[i] 第 3/4 步：提权，将 adbd 替换为 root 版本。"
     if [ "$(A shell 'id -u' 2>/dev/null | tr -d '\r')" = "0" ]; then
         echo "[=] adbd 已经是 root，跳过提权"
     else
         A tcpip "$PORT" >/dev/null 2>&1 || true
         up 6 || { echo '[X] 执行 tcpip 后设备未恢复。'; return 1; }
-        echo '[i] 开始提权。约 50 秒。下面是 exploit 的原始输出。'
+        echo '[i] 开始提权，约 50 秒，下面是 exploit 的原始输出。'
         sleep 2   # picohaxx 一开刷日志就会把上面的提示顶出屏幕，停 2 秒让人看清
         A shell "rm -f $HLOG" >/dev/null 2>&1 || true
         A shell "cd $TMP && ./picohaxx -noftpd -- /system/bin/id > $HLOG 2>&1 < /dev/null" >/dev/null 2>&1 &
@@ -116,15 +116,15 @@ run() {
             i=$((i + 1))
         done
         if [ "$(A shell 'id -u' 2>/dev/null | tr -d '\r')" != "0" ]; then
-            echo '[X] adbd 未获得 root。picohaxx 自行中止（FATAL: SPINLOCK TIMEOUT at root.c:206）。'
+            echo '[X] adbd 未获得 root，picohaxx 自行中止（FATAL: SPINLOCK TIMEOUT at root.c:206）。'
             echo '    通常重启头显后重新运行 dptouch 即可。如果每次失败，Termux 环境可能有问题：'
-            echo '    请清除 Termux 数据。然后重新执行 PC 提权，以恢复脚本。也可以自行推送脚本。'
+            echo '    请清除 Termux 数据，然后重新执行 PC 提权，以恢复脚本；也可以自行推送脚本。'
             return 1
         fi
         echo "[+] adbd 已是 root"
     fi
 
-    echo "[i] 第 4/4 步：注入。由 adbd 运行。"
+    echo "[i] 第 4/4 步：注入，由 adbd 运行。"
     # 远端输出写进 $RLOG、末尾追加 [[RC]]=<rc>；**不**等 adb 客户端（常驻子进程攥着连接不放）⇒ 轮询日志拿结果
     A shell "rm -f $RLOG" >/dev/null 2>&1 || true
     A shell "cd $TMP && { ./start_touch.sh; echo \"[[RC]]=\$?\"; } > $RLOG 2>&1 < /dev/null" >/dev/null 2>&1 &
@@ -138,14 +138,14 @@ run() {
         RC=$(A shell "sed -n 's/^\[\[RC\]\]=//p' $RLOG 2>/dev/null" 2>/dev/null | tr -d '\r' | tail -1)
         [ -n "$RC" ] && break
         i=$((i + 1))
-        if [ $((i % 5)) -eq 0 ]; then echo "[i] 正在等待注入结果。已等待 $((i * 2))s。"; fi
+        if [ $((i % 5)) -eq 0 ]; then echo "[i] 正在等待注入结果，已等待 $((i * 2))s。"; fi
         sleep 2
     done
     sleep 0.3
     kill $TAILPID $ADBPID 2>/dev/null || true
 
     if [ "$RC" = "0" ]; then
-        echo "[+] 完成。hook 已在头显本地进程中运行。可以拔线或关闭窗口。"
+        echo "[+] 完成，hook 已在头显本地进程中运行，可以拔线或关闭窗口。"
         echo "[i] 验证：SteamVR → 设置 → 控制器 → 测试控制器"
         return 0
     fi

@@ -10,7 +10,7 @@ LOG=/data/local/tmp/start_touch.log   # 自述也写一份到这里（0666）：
 
 PID=$(pidof pxrstreamingservice)
 if [ -z "$PID" ]; then
-    echo "[X] pxrstreamingservice 未运行。请先让头显进入 DP 串流。然后重新运行。"
+    echo "[X] pxrstreamingservice 未运行，请先让头显进入 DP 串流，然后重新运行。"
     exit 1
 fi
 
@@ -27,7 +27,7 @@ if injected; then
     exit 0
 fi
 if [ ! -x "$INJ" ] || [ ! -f "$JS" ]; then
-    say "[X] 缺少 $INJ 或 $JS。请在 PC 上重新运行 push.bat，推送文件。"
+    say "[X] 缺少 $INJ 或 $JS，请在 PC 上重新运行 push.bat 推送文件。"
     exit 1
 fi
 
@@ -36,7 +36,7 @@ fi
 env -u LD_LIBRARY_PATH -u LD_PRELOAD -u LD_LIBRARY_PATH_64 TMPDIR=/data/local/tmp \
     "$INJ" -p "$PID" -s "$JS" -e > "$INJLOG" 2>&1 </dev/null &
 INJPID=$!
-say "[i] 注入器已启动。正在等待 agent 加载。"
+say "[i] 注入器已启动，正在等待 agent 加载。"
 
 # exploit 刚跑完那几秒 lmkd 会连着杀进程，注入器可能被顺手杀掉 ⇒ 它退了就按退出码定位（见 notes/09）
 i=0
@@ -48,11 +48,11 @@ while [ "$i" -lt 60 ]; do
     kill -0 $INJPID 2>/dev/null || break
     sleep 1
     i=$((i + 1))
-    if [ $((i % 10)) -eq 0 ]; then say "  [i] 已等待 ${i}s。注入器仍在运行。"; fi
+    if [ $((i % 10)) -eq 0 ]; then say "  [i] 已等待 ${i}s，注入器仍在运行。"; fi
 done
 
 if kill -0 $INJPID 2>/dev/null; then
-    say "[X] 已等待 60 秒。注入器仍在运行，agent 未加载。请再运行一次本脚本。"
+    say "[X] 已等待 60 秒，注入器仍在运行，agent 未加载。请再运行一次本脚本。"
 else
     RC=0
     wait $INJPID 2>/dev/null || RC=$?

@@ -72,8 +72,8 @@ if (-not $Dll) {
     foreach ($r in $roots) { if ($Dll = Resolve-Dll $r) { break } }
 }
 while (-not $Dll) {
-    Write-Host '[!] 未找到 driver_pico.dll。已检查注册表、OpenVR 和常见安装位置。' -ForegroundColor Yellow
-    Write-Host '    请输入 driver_pico.dll 的路径，或 Business Streaming DP 的安装目录。按回车退出。'
+    Write-Host '[!] 未找到 driver_pico.dll，已检查注册表、OpenVR 和常见安装位置。' -ForegroundColor Yellow
+    Write-Host '    请输入 driver_pico.dll 的路径，或 Business Streaming DP 的安装目录，按回车退出。'
     $in = Read-Host '> '
     if (-not $in) { Write-Host '[X] 已取消。' -ForegroundColor Red; exit 1 }
     $Dll = Resolve-Dll $in
@@ -90,7 +90,7 @@ function Die($m) { Write-Host "[X] $m" -ForegroundColor Red; exit 1 }
 # 提权窗口用 cmd /k 保住，跑完不关好读结果。
 $id = [Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not (New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host '[i] 需要管理员权限。正在请求提权。请在 UAC 弹窗点「是」。'
+    Write-Host '[i] 需要管理员权限，正在请求提权，请在 UAC 弹窗点「是」。'
     # 提权进程的起始目录是 System32：相对路径必须在这里先转成绝对路径，否则会退化成「自己找驱动」
     $dllArg = if ($Dll) { [System.IO.Path]::GetFullPath($Dll) } else { '' }
     # Windows PowerShell 5.1 的 ArgumentList 不会自己加引号，带空格的路径必须手动包
@@ -188,9 +188,9 @@ if (-not (Test-Path -LiteralPath $plBin) -or -not (Test-Path -LiteralPath $plMan
 }
 $man = Get-Content -LiteralPath $plMan -Raw | ConvertFrom-Json
 $payload = [System.IO.File]::ReadAllBytes($plBin)
-if ($payload.Length -ne [int]$man.payload_size) { Die '骨架 payload 长度与清单不符。文件可能被修改。' }
+if ($payload.Length -ne [int]$man.payload_size) { Die '骨架 payload 长度与清单不符，文件可能被修改。' }
 $plSha = (Get-FileHash -LiteralPath $plBin -Algorithm SHA256).Hash.ToLower()
-if ($plSha -ne $man.payload_sha256) { Die '骨架 payload 校验失败。文件可能被修改。请使用仓库中的原版文件，或按 docs/notes/artifacts/build_dp_skeleton_payload.py 重建。' }
+if ($plSha -ne $man.payload_sha256) { Die '骨架 payload 校验失败，文件可能被修改。请使用仓库中的原版文件，或按 docs/notes/artifacts/build_dp_skeleton_payload.py 重建。' }
 
 function Build-DpSkeletonImage {
     param([byte[]]$Bytes)
@@ -207,11 +207,11 @@ function Build-DpSkeletonImage {
     $secTab = $optOff + $optSize
 
     if ($nSec -ne 7 -or $sizeOfImage -ne [uint32]$man.section.rva) {
-        Die ("这个 driver_pico.dll 不是支持的版本（段数 = {0}，SizeOfImage = 0x{1:X}）。请先放回原版。然后打补丁。可以重装 DP 驱动，或从安装包取原版。" -f $nSec, $sizeOfImage)
+        Die ("这个 driver_pico.dll 不是支持的版本（段数 = {0}，SizeOfImage = 0x{1:X}）。请先放回原版，然后打补丁；也可以重装 DP 驱动，或从安装包取原版。" -f $nSec, $sizeOfImage)
     }
     $slot = $secTab + $nSec * 40
-    if ($slot + 40 -gt $sizeOfHeaders) { Die '无法添加段：PE 头中没有空的段表项。可能不是支持的版本。' }
-    for ($i = 0; $i -lt 40; $i++) { if ($Bytes[$slot + $i] -ne 0) { Die '无法添加段：PE 头中的段表项不是空的。可能不是支持的版本。' } }
+    if ($slot + 40 -gt $sizeOfHeaders) { Die '无法添加段：PE 头中没有空的段表项，可能不是支持的版本。' }
+    for ($i = 0; $i -lt 40; $i++) { if ($Bytes[$slot + $i] -ne 0) { Die '无法添加段：PE 头中的段表项不是空的，可能不是支持的版本。' } }
 
     $vSize = AlignUp $payload.Length $secAlign
     $rawPtr = AlignUp $Bytes.Length $fileAlign
@@ -234,7 +234,7 @@ function Build-DpSkeletonImage {
 
     foreach ($p in $man.patches) {
         $fileOff = FileOffsetOfRva -Arr $new -SecTab $secTab -NSec $nSec -Rva ([int]$p.rva)
-        if ($fileOff -lt 0) { Die ("段表中找不到 RVA 0x{0:X}。可能不是支持的版本。" -f [int]$p.rva) }
+        if ($fileOff -lt 0) { Die ("段表中找不到 RVA 0x{0:X}，可能不是支持的版本。" -f [int]$p.rva) }
         $got = -join ($new[$fileOff..($fileOff + $p.old.Length / 2 - 1)] | ForEach-Object { $_.ToString('X2') })
         if ($got -ne $p.old) {
             Die ("挂钩点 0x{0:X} 的原字节不符。这个 driver_pico.dll 不是支持的版本。已中止，未写入。`n  期望 {1}`n  实际 {2}" -f [int]$p.rva, $p.old, $got)
@@ -283,14 +283,14 @@ foreach ($p in $man.patches) {
     $got = -join ($c[$fileOff..($fileOff + $p.new.Length / 2 - 1)] | ForEach-Object { $_.ToString('X2') })
     if ($got -ne $p.new) { DieVerify "挂钩点 0x$('{0:X}' -f [int]$p.rva) 不对" }
 }
-Write-Host '[+] 复核通过。重启 SteamVR 后生效。' -ForegroundColor Green
+Write-Host '[+] 复核通过，重启 SteamVR 后生效。' -ForegroundColor Green
 
 # --- 顺手修 profile 里的 application_menu 笔误（见文件头；纯 JSON 文本，DLL 不读它）---
 $prof = Join-Path (Split-Path (Split-Path (Split-Path $dll -Parent) -Parent) -Parent) 'resources\input\pico_controller_profile.json'
 $badKey = '"input/application_menu"'
 $goodKey = '"/input/application_menu"'
 if (-not (Test-Path -LiteralPath $prof)) {
-    Write-Host "[!] 未找到 $prof。可能换过版本。跳过 profile 修补。" -ForegroundColor Yellow
+    Write-Host "[!] 未找到 $prof，可能换过版本，跳过 profile 修补。" -ForegroundColor Yellow
 }
 else {
     $txt = [System.IO.File]::ReadAllText($prof)
@@ -312,7 +312,7 @@ else {
         [System.IO.File]::WriteAllText($prof, $txt.Replace($badKey, $goodKey), (New-Object System.Text.UTF8Encoding($bom)))
         $chk = [System.IO.File]::ReadAllText($prof)
         if ($chk.Contains($badKey) -or -not $chk.Contains($goodKey)) { Die "application_menu 修补复核失败：$prof。" }
-        Write-Host '[+] 已补上 /input/application_menu。menu 键在 SteamVR 中现在可用。' -ForegroundColor Green
+        Write-Host '[+] 已补上 /input/application_menu，menu 键在 SteamVR 中现在可用。' -ForegroundColor Green
         Write-Host "[i] 还原：将 $porig 复制回 $(Split-Path $prof -Leaf)。"
     }
 }
@@ -352,10 +352,10 @@ function Get-HandObjSha {
     finally { $ms.Dispose() }
 }
 
-if (-not (Test-Path -LiteralPath $rmRoot)) { Die "未找到 $rmRoot。可能换过版本。改动 D 需要它，已中止。" }
+if (-not (Test-Path -LiteralPath $rmRoot)) { Die "未找到 $rmRoot，可能换过版本。改动 D 需要它，已中止。" }
 $shaGot = Get-HandObjSha
 if ($shaGot -ne $handObjSha) {
-    Die ("手柄渲染模型不是支持的版本（指纹 {0}，预期 {1}）。请先把 rendermodels\pico_neo3_* 下的 *.orig 还原。然后重新运行。已中止，未写入。" -f $shaGot, $handObjSha)
+    Die ("手柄渲染模型不是支持的版本（指纹 {0}，预期 {1}）。请先把 rendermodels\pico_neo3_* 下的 *.orig 还原，然后重新运行。已中止，未写入。" -f $shaGot, $handObjSha)
 }
 Write-Host '[+] 手柄渲染模型校验通过' -ForegroundColor Green
 
@@ -384,7 +384,7 @@ function Format-HandXyz([double[]]$V) {
 
 function Read-HandNums([string]$Text, [int]$Count) {
     $parts = @($Text.Split(',') | ForEach-Object { [double]::Parse($_.Trim(), $inv) })
-    if ($parts.Count -ne $Count) { Die "motion 参数不是 $Count 个分量：[$Text]。可能不是支持的版本。" }
+    if ($parts.Count -ne $Count) { Die "motion 参数不是 $Count 个分量：[$Text]，可能不是支持的版本。" }
     return $parts
 }
 
@@ -420,7 +420,7 @@ function Assert-HandXyz {
 function Assert-HandJsonOrig {
     param($Cfg)
     $json = Join-Path (Join-Path $rmRoot $Cfg.Dir) ($Cfg.Dir + '.json')
-    if (-not (Test-Path -LiteralPath $json)) { Die "未找到 $json。改动 D 需要它，已中止。" }
+    if (-not (Test-Path -LiteralPath $json)) { Die "未找到 $json，改动 D 需要它，已中止。" }
     $jorig = "$json.orig"
     if (-not (Test-Path -LiteralPath $jorig)) {
         Copy-Item -LiteralPath $json -Destination $jorig -Force
@@ -428,7 +428,7 @@ function Assert-HandJsonOrig {
     }
     $sha = (Get-FileHash -LiteralPath $jorig -Algorithm SHA256).Hash.ToLower()
     if ($sha -ne $Cfg.JsonSha) {
-        Die ("$($Cfg.Dir).json 的 .orig 不是支持的版本（指纹 {0}，预期 {1}）。请先放回厂商原件。然后重新运行。已中止，未写入。" -f $sha, $Cfg.JsonSha)
+        Die ("$($Cfg.Dir).json 的 .orig 不是支持的版本（指纹 {0}，预期 {1}）。请先放回厂商原件，然后重新运行。已中止，未写入。" -f $sha, $Cfg.JsonSha)
     }
     return $jorig
 }
@@ -451,7 +451,7 @@ function Convert-HandJson {
     for ($i = 0; $i -lt $lines.Length; $i++) {
         if ($lines[$i] -notmatch '^\s*"motion"\s*:\s*\{') { continue }
         $end = Get-MotionBlockEnd -Lines $lines -Start $i
-        if ($end -lt 0) { Die "$($Cfg.Dir).json 的 motion 块不闭合。可能不是支持的版本。" }
+        if ($end -lt 0) { Die "$($Cfg.Dir).json 的 motion 块不闭合，可能不是支持的版本。" }
         $motions++
         # 摇杆块的标志：两轴限位参数（扳机 / 握把键 / 按键块里没有）
         $isJoy = $false
@@ -504,7 +504,7 @@ function Convert-HandJson {
                 # 其余活动部件自身的初始朝向；现有模型全为 0，出现非 0 说明版本变了
                 $v = Read-HandXyz $Matches[1]
                 if (@($v | Where-Object { [math]::Abs($_) -gt 1e-9 }).Count -gt 0) {
-                    Die "$($Cfg.Dir).json 的 motion.rotate_xyz 非零。没有对应补偿，已中止。"
+                    Die "$($Cfg.Dir).json 的 motion.rotate_xyz 非零，没有对应补偿，已中止。"
                 }
             }
         }
@@ -619,7 +619,7 @@ foreach ($c in $handCfgs) {
 $ini = Join-Path (Split-Path $dll -Parent) 'RVRPlugin.ini'
 $iniChanged = $false
 if (-not (Test-Path -LiteralPath $ini)) {
-    Write-Host "[!] 未找到 $ini。可能换过版本。跳过 [controller] 偏移。" -ForegroundColor Yellow
+    Write-Host "[!] 未找到 $ini，可能换过版本，跳过 [controller] 偏移。" -ForegroundColor Yellow
 }
 else {
     $iniOrig = "$ini.orig"
@@ -659,7 +659,7 @@ else {
     if (-not $chk.Contains('[controller]') -or -not $chk.Contains('leftz=-0.0401')) { Die 'RVRPlugin.ini 复核失败：[controller] 偏移未写入。' }
 }
 if ($handChanged -or $iniChanged) {
-    Write-Host '[+] 手柄握把位置已修正。虚拟手落在握把上。模型仍与实物对齐。' -ForegroundColor Green
+    Write-Host '[+] 手柄握把位置已修正，虚拟手落在握把上，模型仍与实物对齐。' -ForegroundColor Green
 }
 else {
     Write-Host '[=] 手柄握把位置已经是最新，跳过'
@@ -669,7 +669,7 @@ else {
 $inRoot = Join-Path $resRoot 'input'
 $hmdProf = Join-Path $inRoot 'pico_hmd_profile.json'
 if (-not (Test-Path -LiteralPath $inRoot)) {
-    Write-Host "[!] 未找到 $inRoot。可能换过版本。跳过 HMD profile 修补。" -ForegroundColor Yellow
+    Write-Host "[!] 未找到 $inRoot，可能换过版本，跳过 HMD profile 修补。" -ForegroundColor Yellow
 }
 elseif (Test-Path -LiteralPath $hmdProf) {
     Write-Host '[=] pico_hmd_profile.json 已存在，跳过'
@@ -695,7 +695,7 @@ else {
     $hmdText = $hmdText.Replace("`r`n", "`n").Replace("`n", "`r`n").TrimEnd([char[]]"`r`n") + "`r`n"
     [System.IO.File]::WriteAllText($hmdProf, $hmdText, (New-Object System.Text.UTF8Encoding($false)))
     try { $null = [System.IO.File]::ReadAllText($hmdProf) | ConvertFrom-Json } catch { Die "$(Split-Path $hmdProf -Leaf) 内容损坏，不是合法 JSON。" }
-    Write-Host '[+] 已补上 input\pico_hmd_profile.json。驱动不再报 profile 缺失。头显不再被模拟成 Rift。' -ForegroundColor Green
+    Write-Host '[+] 已补上 input\pico_hmd_profile.json，驱动不再报 profile 缺失，头显不再被模拟成 Rift。' -ForegroundColor Green
 }
 
 Write-Host '[i] 还原：用同名 .orig 覆盖原文件。'

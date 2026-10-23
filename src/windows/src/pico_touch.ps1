@@ -43,12 +43,12 @@ $Adb = Get-AdbPath -Adb $Adb
 Ensure-Deps -Cache $Cache
 
 foreach ($f in @("$Cache\$Haxx", "$Cache\$Inj", "$Share\hook.js", "$Share\start_touch.sh")) {
-    if (-not (Test-Path $f)) { Write-Host "[X] 缺少 $f。详见 README。" -ForegroundColor Red; exit 1 }
+    if (-not (Test-Path $f)) { Write-Host "[X] 缺少 $f，详见 README。" -ForegroundColor Red; exit 1 }
 }
 
 Write-Host '[i] 第 1/3 步：认头显'
 $sel = Select-Headset -Adb $Adb -Serial $Serial -IpFile $IpFile
-if (-not $sel) { Write-Host '[X] 未找到头显。已取消。' -ForegroundColor Red; exit 1 }
+if (-not $sel) { Write-Host '[X] 未找到头显，已取消。' -ForegroundColor Red; exit 1 }
 $D = $sel.Target
 $Serial = $sel.Serial
 Write-Host "[+] 已选择头显：$D" -ForegroundColor Green
@@ -60,7 +60,7 @@ $TS = Get-Date -Format 'yyyyMMdd-HHmmss'
 $LogDir = '/sdcard/Download/pico_touch/logs'
 & $Adb -s $D shell "mkdir -p $LogDir 2>/dev/null; nohup logcat -b all -v threadtime -f $LogDir/logcat_$TS.txt </dev/null >/dev/null 2>&1 &" | Out-Null
 Start-Sleep -Seconds 2
-Write-Host "[i] 头显 logcat 保存在 $LogDir/。如有问题，请发送这个目录。"
+Write-Host "[i] 头显 logcat 保存在 $LogDir/，如有问题请发送这个目录。"
 
 $id = (& $Adb -s $D shell id) -join ''
 if ($id -match 'uid=0') {
@@ -77,18 +77,18 @@ else {
         & $Adb connect $D | Out-Null; Start-Sleep -Seconds 2
     }
     else {
-        Write-Host '[i] 正在打开 adb 的 TCP 端口。adbd 会重启，USB 连接会中断几秒。请等待它恢复。'
+        Write-Host '[i] 正在打开 adb 的 TCP 端口，adbd 会重启，USB 连接会中断几秒，请等待它恢复。'
         $back = $false
         for ($i = 1; $i -le 10; $i++) {
             Start-Sleep -Seconds 2
             if ((Get-AdbDeviceState -Adb $Adb -Target $D) -eq 'device') { $back = $true; break }
             Write-Host "[i] 正在等待 USB 恢复（第 $i/10 轮）。"
         }
-        if (-not $back) { Write-Host '[X] USB 未恢复。请重新插拔数据线。然后从头运行本脚本。' -ForegroundColor Red; exit 1 }
+        if (-not $back) { Write-Host '[X] USB 未恢复，请重新插拔数据线，然后从头运行本脚本。' -ForegroundColor Red; exit 1 }
         Write-Host '[+] USB 已恢复。'
     }
 
-    Write-Host '[i] 开始提权。约 50 秒。下面是 exploit 的原始输出。'  # picohaxx 会重启 adbd，输出全量跟着看
+    Write-Host '[i] 开始提权，约 50 秒，下面是 exploit 的原始输出。'  # picohaxx 会重启 adbd，输出全量跟着看
     Start-Sleep -Seconds 2  # 一开刷日志就会把上面的提示顶出屏幕，停 2 秒让人看清
     # 只用来拿 root：父进程 adbd 会被重启带走，注入必须放到下一步另起 adb shell
     & $Adb -s $D push "$Cache\$Haxx" /data/local/tmp/picohaxx | Out-Null
@@ -100,8 +100,8 @@ else {
     # 也不会变成 root ⇒ 别去等「adbd 回来」，按中止处理
     $uidNow = ((& $Adb -s $D shell 'id -u' 2>$null) -join '').Trim()
     if ($uidNow -match '^\d+$' -and $uidNow -ne '0') {
-        Write-Host '[X] 提权未成功。picohaxx 自行中止（FATAL: SPINLOCK TIMEOUT at root.c:206）。' -ForegroundColor Red
-        Write-Host '[i] 通常再运行一次本脚本即可成功。如果仍失败，请重启头显。'  # 重启后 exploit 状态最干净
+        Write-Host '[X] 提权未成功，picohaxx 自行中止（FATAL: SPINLOCK TIMEOUT at root.c:206）。' -ForegroundColor Red
+        Write-Host '[i] 通常再运行一次本脚本即可成功，如果仍失败，请重启头显。'  # 重启后 exploit 状态最干净
         exit 1
     }
 
@@ -120,7 +120,7 @@ else {
         if ($cur -match ([regex]::Escape($D) + '\s+device')) { $ok = $true; break }
         Write-Host "[i] 提权后正在重连（第 $i/6 次）。"
     }
-    if (-not $ok) { Write-Host '[X] adbd 重启后无法连接。请插入 USB 线。然后重新运行。' -ForegroundColor Red; exit 1 }
+    if (-not $ok) { Write-Host '[X] adbd 重启后无法连接，请插入 USB 线，然后重新运行。' -ForegroundColor Red; exit 1 }
     $id = (& $Adb -s $D shell id) -join ''
     if ($id -notmatch 'uid=0') { Write-Host '[X] 提权失败。adbd 已恢复，但 id 不是 root。' -ForegroundColor Red; exit 1 }
     Write-Host '[+] root 已获得'
@@ -136,12 +136,12 @@ $out = (& $Adb -s $D shell '/data/local/tmp/start_touch.sh') -join "`n"
 Write-Host $out
 if ($out -match '已注入') {
     Write-Host ''
-    Write-Host '[+] 完成。现在可以拔掉 USB 线，关闭本窗口。' -ForegroundColor Green
+    Write-Host '[+] 完成，现在可以拔掉 USB 线，关闭本窗口。' -ForegroundColor Green
     Write-Host '[i] 验证：SteamVR → 设置 → 控制器 → 测试控制器。手指依次搭在 A/B/X/Y、扳机与摇杆顶上。'
     Write-Host ''
     # adbd 已是 root：顺手把 Termux 侧也装好（以后头显里敲 dptouch 就行）
     Push-TermuxKit -Adb $Adb -Target $D -Paths $P
 }
 else {
-    Write-Host '[X] 注入失败。上面是设备端的输出。' -ForegroundColor Red; exit 1
+    Write-Host '[X] 注入失败，上面是设备端的输出。' -ForegroundColor Red; exit 1
 }

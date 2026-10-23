@@ -37,10 +37,10 @@ function Get-AdbPath {
     # 哪里都没有：让 get_deps.ps1 按需拉一份到 temp/platform-tools（md5 逐字节校验，见该脚本）
     $cached = Join-Path (Get-RepoPaths -ScriptDir $PicoUtilsDir).Cache 'platform-tools\adb.exe'
     if (-not (Test-Path $cached)) {
-        Write-Host '[i] 本机未安装 adb。正在下载 platform-tools。'
+        Write-Host '[i] 本机未安装 adb，正在下载 platform-tools。'
         & (Join-Path $PicoUtilsDir 'get_deps.ps1') -PlatformTools
     }
-    if (-not (Test-Path $cached)) { Write-Host '[X] adb 下载失败。请手动安装 platform-tools，或用 -Adb <路径> 指定。' -ForegroundColor Red; exit 1 }
+    if (-not (Test-Path $cached)) { Write-Host '[X] adb 下载失败，请手动安装 platform-tools，或用 -Adb <路径> 指定。' -ForegroundColor Red; exit 1 }
     $cached
 }
 
@@ -49,7 +49,7 @@ function Ensure-Deps {
     New-Item -ItemType Directory -Force $Cache | Out-Null
     foreach ($f in 'frida-inject', 'picohaxx.neo3.bin') {
         if (-not (Test-Path (Join-Path $Cache $f))) {
-            Write-Host "[i] 缺少 $f。正在下载依赖。"
+            Write-Host "[i] 缺少 $f，正在下载依赖。"
             & (Join-Path $PicoUtilsDir 'get_deps.ps1')
             break
         }
@@ -116,7 +116,7 @@ function Connect-AdbTarget {
     }
     $st = Get-AdbDeviceState -Adb $Adb -Target $Target
     if ($st -ne 'device') {
-        if ($st) { Write-Host "[!] $Target 的状态是 $st。设备不可用。" -ForegroundColor Yellow }
+        if ($st) { Write-Host "[!] $Target 的状态是 $st，设备不可用。" -ForegroundColor Yellow }
         if ($tried -and $wireless) { & $Adb disconnect $Target 2>$null | Out-Null }
         return $false
     }
@@ -149,7 +149,7 @@ function Get-WirelessCandidates {
         $seen[$ip] = $true
         $all += $ip
     }
-    Write-Host "[i] 正在扫描网络。候选设备 $($all.Count) 台。"
+    Write-Host "[i] 正在扫描网络，候选设备 $($all.Count) 台。"
     foreach ($ip in $all) {
         if (Test-TcpOpen -Server $ip -Port 5555 -TimeoutMs 300) { $cand += "$ip`:5555" }
     }
@@ -180,7 +180,7 @@ function Select-Headset {
     if ($devs.Count -gt 0) {
         Write-Host ''
         Write-Host '--------------------------------------------------------------' -ForegroundColor Cyan
-        Write-Host ' 电脑上已有 adb 设备。请选择头显。' -ForegroundColor Cyan
+        Write-Host ' 电脑上已有 adb 设备，请选择头显。' -ForegroundColor Cyan
         Write-Host '--------------------------------------------------------------' -ForegroundColor Cyan
         for ($i = 0; $i -lt $devs.Count; $i++) { Write-Host ('   [{0}] {1}' -f ($i + 1), $devs[$i].Serial) -ForegroundColor Yellow }
         Write-Host ''
@@ -199,7 +199,7 @@ function Select-Headset {
             if (-not $a) { $n = 1 }
             elseif ($a -match '^\d+$' -and [int]$a -ge 1 -and [int]$a -le $devs.Count) { $n = [int]$a }
             else {
-                Write-Host ("[X] 输入无效：{0}。请输入 1-{1} 之间的序号，或输入头显 IP，或输入 q。" -f $a, $devs.Count) -ForegroundColor Red
+                Write-Host ("[X] 输入无效：{0}，请输入 1-{1} 之间的序号，或输入头显 IP，或输入 q。" -f $a, $devs.Count) -ForegroundColor Red
                 continue
             }
             $pick = $devs[$n - 1].Serial
@@ -215,13 +215,13 @@ function Select-Headset {
     # --- 2) 没有设备：让用户填头显 IPv4，或自动探测后确认 ---
     Write-Host ''
     Write-Host '--------------------------------------------------------------' -ForegroundColor Cyan
-    Write-Host ' 头显的 adb 未连接。请改用无线 adb。' -ForegroundColor Cyan
+    Write-Host ' 头显的 adb 未连接，请改用无线 adb。' -ForegroundColor Cyan
     Write-Host '--------------------------------------------------------------' -ForegroundColor Cyan
     Write-Host ' 查看头显 IP：在头显中打开投屏 APP，点「投至浏览器」。' -ForegroundColor Cyan
     Write-Host ' 页面会显示一个地址，例如 192.168.137.108。' -ForegroundColor Cyan
     Write-Host ''
-    Write-Host ' 只输入 IP 地址。不要输入端口和路径。' -ForegroundColor Cyan
-    Write-Host ' 不知道 IP：按回车。工具会扫描网络。随后再次询问。' -ForegroundColor Cyan
+    Write-Host ' 只输入 IP 地址，不要输入端口和路径。' -ForegroundColor Cyan
+    Write-Host ' 不知道 IP：按回车，工具会扫描网络，随后再次询问。' -ForegroundColor Cyan
     Write-Host ' 退出：输入 q。' -ForegroundColor Cyan
     $ip = ''
     while (-not $ip) {
@@ -229,7 +229,7 @@ function Select-Headset {
         if ($a -match '^(q|quit|取消)$') { return $null }
         if (-not $a) { break }
         if ($a -match '^\d{1,3}(\.\d{1,3}){3}$') { $ip = $a; break }
-        Write-Host ("[X] 输入无效：{0}。请只输入 IP 地址，例如 192.168.137.108。" -f $a) -ForegroundColor Red
+        Write-Host ("[X] 输入无效：{0}，请只输入 IP 地址，例如 192.168.137.108。" -f $a) -ForegroundColor Red
     }
     if ($ip) {
         $t = Select-ByIp -Adb $Adb -Text $ip -IpFile $IpFile
@@ -238,7 +238,7 @@ function Select-Headset {
     }
 
     $cand = @(Get-WirelessCandidates -IpFile $IpFile)
-    if ($cand.Count -eq 0) { Write-Host '[X] 自动扫描未找到候选设备。请重新运行。然后手动输入 IP。' -ForegroundColor Red; return $null }
+    if ($cand.Count -eq 0) { Write-Host '[X] 自动扫描未找到候选设备，请重新运行，然后手动输入 IP。' -ForegroundColor Red; return $null }
     # 探测只为确认「这台能不能当 adb 用」：验完立刻断开，选中哪台再正式连一次
     # （否则用户不认它 / 没选它时，刚连上的设备会留在 adb devices 里）
     $ok = @()
@@ -248,7 +248,7 @@ function Select-Headset {
             & $Adb disconnect $c 2>$null | Out-Null
         }
     }
-    if ($ok.Count -eq 0) { Write-Host '[X] 候选设备均无法连接。开放 5555 端口的设备不一定是头显。' -ForegroundColor Red; return $null }
+    if ($ok.Count -eq 0) { Write-Host '[X] 候选设备均无法连接，开放 5555 端口的设备不一定是头显。' -ForegroundColor Red; return $null }
     if ($ok.Count -eq 1) {
         Write-Host ''
         Write-Host (' 网络扫描到 1 台设备：{0}。' -f $ok[0]) -ForegroundColor Yellow
@@ -256,13 +256,13 @@ function Select-Headset {
             $b = "$(Read-Host '这是头显吗？回车=是，n=不是，q=退出')".Trim()
             if ($b -match '^(n|no|否|q|quit|取消)$') { return $null }
             if ($b -match '^(y|yes|是)?$') { $chosen = $ok[0]; break }
-            Write-Host '[!] 输入无效。按回车表示「是」，输入 n 表示「不是」。' -ForegroundColor Yellow
+            Write-Host '[!] 输入无效，按回车表示「是」，输入 n 表示「不是」。' -ForegroundColor Yellow
         }
     }
     else {
         Write-Host ''
         Write-Host '--------------------------------------------------------------' -ForegroundColor Cyan
-        Write-Host ' 网络扫描到多台设备。请选择头显。' -ForegroundColor Cyan
+        Write-Host ' 网络扫描到多台设备，请选择头显。' -ForegroundColor Cyan
         Write-Host '--------------------------------------------------------------' -ForegroundColor Cyan
         for ($i = 0; $i -lt $ok.Count; $i++) { Write-Host ('   [{0}] {1}' -f ($i + 1), $ok[$i]) -ForegroundColor Yellow }
         Write-Host ''
@@ -272,7 +272,7 @@ function Select-Headset {
             if ($b -match '^(q|quit|取消)$') { return $null }
             if (-not $b) { $chosen = $ok[0]; break }
             if ($b -match '^\d+$' -and [int]$b -ge 1 -and [int]$b -le $ok.Count) { $chosen = $ok[[int]$b - 1]; break }
-            Write-Host ("[X] 输入无效：{0}。请输入 1-{1} 之间的序号，或输入 q。" -f $b, $ok.Count) -ForegroundColor Red
+            Write-Host ("[X] 输入无效：{0}，请输入 1-{1} 之间的序号，或输入 q。" -f $b, $ok.Count) -ForegroundColor Red
         }
     }
     if (-not (Connect-AdbTarget -Adb $Adb -Target $chosen -IpFile $IpFile)) {
@@ -292,7 +292,7 @@ function Push-TermuxKit {
     $Sd = '/sdcard/Download/pico_touch'  # 中转目录，与 push.ps1 / install.sh 保持一致
 
     if ((((& $Adb -s $Target shell id) -join '') -notmatch 'uid=0')) {
-        Write-Host '[i] 当前 adb 不是 root，无法自动安装 Termux 侧组件。请在头显中打开 Termux。然后初始化一次：'
+        Write-Host '[i] 当前 adb 不是 root，无法自动安装 Termux 侧组件。请在头显中打开 Termux，然后初始化一次：'
         Write-Host '    termux-setup-storage               # 授权存储。在弹窗中允许。'
         Write-Host "    sh $Sd/install.sh                  # 安装 kit 到 ~/pico_touch。可重复运行。"
         Write-Host "以后每次开机，运行："
@@ -301,7 +301,7 @@ function Push-TermuxKit {
     }
 
     if ((((& $Adb -s $Target shell "[ -d $Prefix/home ] && echo yes") -join '').Trim()) -ne 'yes') {
-        Write-Host '[i] 头显未安装 Termux。跳过 Termux 侧安装。'
+        Write-Host '[i] 头显未安装 Termux，跳过 Termux 侧安装。'
         return
     }
 
@@ -317,7 +317,7 @@ function Push-TermuxKit {
     )
     & $Adb -s $Target shell "mkdir -p $Dh" | Out-Null
     foreach ($f in $files) {
-        if (-not (Test-Path $f.Src)) { Write-Host "[i] 缺少 $($f.Src)。跳过 Termux 侧安装。" -ForegroundColor Yellow; return }
+        if (-not (Test-Path $f.Src)) { Write-Host "[i] 缺少 $($f.Src)，跳过 Termux 侧安装。" -ForegroundColor Yellow; return }
         & $Adb -s $Target push $f.Src "$Dh/$($f.Name)" | Out-Null
         if ($LASTEXITCODE -ne 0) { Write-Host "[!] 推送 $($f.Name) 到 Termux 失败。" -ForegroundColor Yellow; return }
     }
@@ -335,9 +335,9 @@ function Push-TermuxKit {
     if ($entry -notmatch [regex]::Escape($ctx)) {
         Write-Host "[X] $Prefix/usr/bin/$Launch 的 SELinux 上下文不正确。应用会收到 Permission denied：" -ForegroundColor Red
         Write-Host "    $entry"
-        Write-Host "    备选方案：在头显中运行 sh $Sd/install.sh。由应用创建这个 symlink，上下文正确。"
+        Write-Host "    备选方案：在头显中运行 sh $Sd/install.sh，由应用创建这个 symlink，上下文正确。"
     }
     else {
-        Write-Host "[+] Termux 侧安装完成。打开 Termux，运行 $Launch 即可。" -ForegroundColor Green
+        Write-Host "[+] Termux 侧安装完成，打开 Termux 运行 $Launch 即可。" -ForegroundColor Green
     }
 }
