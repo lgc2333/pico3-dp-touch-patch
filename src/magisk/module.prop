@@ -1,0 +1,6 @@
+id=pico_dp_touch
+name=PICO Neo 3 Pro DP Mode Capacitive Touch Fix
+version=v1_experimental
+versionCode=1
+author=LgCuwukii
+description=[EXPERIMENTAL] Restores the controller capacitive touch in DP direct link HID reports. Only supports PUI 5.9.9-202409100313.

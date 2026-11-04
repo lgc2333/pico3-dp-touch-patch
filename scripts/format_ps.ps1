@@ -18,8 +18,18 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+# 从 pwsh 里经 pnpm 调 powershell 时，继承的 PSModulePath 把 PS7 的模块根排在前面，
+# 5.1 会加载到 PS7 的副本 ⇒ Get-FileHash / Invoke-Formatter 这些直接消失。5.1 只认自己那三个根。
+if ($PSVersionTable.PSVersion.Major -lt 6 -and $env:PSModulePath) {
+    $env:PSModulePath = @(
+        (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'),
+        (Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules'),
+        (Join-Path $PSHOME 'Modules')
+    ) -join [System.IO.Path]::PathSeparator
+}
+
 $Root = Split-Path -Parent $PSScriptRoot  # 本文件在 scripts\ 下，仓库根是它的上一级
-if (-not $Path) { $Path = @((Join-Path $Root 'src/windows/src'), (Join-Path $Root 'scripts')) }
+if (-not $Path) { $Path = @((Join-Path $Root 'src/windows/src'), (Join-Path $Root 'src/magisk/tools'), (Join-Path $Root 'scripts')) }
 
 $files = @()
 foreach ($p in $Path) {

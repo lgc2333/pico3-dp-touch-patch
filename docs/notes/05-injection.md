@@ -39,6 +39,8 @@ Interceptor.attach(base_of('libpxrstreamingservice.so').add(0x18014), {
 
 完整脚本：`src/shared/hook.js`（**设备端**用）。
 
+> 有永久 root（解 BL + Magisk）时，头显侧可以改用模块、不装 Frida：见 [`11-magisk-module.md`](11-magisk-module.md)。
+
 ## 为什么能挂上（可行性实测）
 
 ```
@@ -128,7 +130,7 @@ report[50] 取值分布: {0x0:23318, 0x2:986, 0x8:874, 0x20:762, 0x80:951, 0xa:1
 **root 是临时的**（picohaxx 纯内核提权，重启即失效）⇒ 每次开机仍需跑一次 `pico_touch.ps1`。
 提权那步必须经 adb，但无线 adb 可用 ⇒ **不用插线**（见下）。
 
-要彻底免 root 得让改动持久化到 `/system` —— 不可行（见 `08`）。
+要免掉每次注入，走永久 root（`10`）+ 模块（`11`）：模块直接改库、不需要 Frida，也不需要每次跑脚本。
 
 ### 两个实测特性
 

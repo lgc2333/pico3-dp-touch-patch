@@ -8,6 +8,7 @@
 
     const CC = 'libpxrcontrollerclient.pxr.so';   // GetControllerKeyData
     const SS = 'libpxrstreamingservice.so';       // HidIOListener::hidWrite
+    // 这里是两个函数的首字节；Magisk 模块的 shim 打的是同名符号的 GOT 槽（偏移不同），见 docs/notes/11-magisk-module.md
     const OFF_GETKEYDATA = 0x1f5c4;
     const OFF_HIDWRITE = 0x18014;
 

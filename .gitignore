@@ -4,4 +4,10 @@ temp/
 node_modules/
 pnpm-lock.yaml
 package-lock.json
+
 __pycache__/
+
+# 模块里现场 patch / 编译的系统库
+src/magisk/system/lib64/
+
+.agents/skills/*

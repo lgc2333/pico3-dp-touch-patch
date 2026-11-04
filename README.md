@@ -16,7 +16,7 @@
 
 A/B/X/Y、扳机、摇杆顶，六处触摸都能用。手指搭上去时，游戏里的手指也会动。
 
-- 头显侧只改内存，重启后失效，每次开机后要重跑一次。
+- 头显侧只改内存，重启后失效。临时 root 每次开机要重跑；永久 root 装模块后常驻（实验性方案，见下文 B 节）。
 - PC 侧只改驱动自带的文件，可以一步还原。
 
 ## 本补丁另外修的东西
@@ -56,7 +56,9 @@ PC 上不需要安装 adb，没有的话脚本会把它下载到 `src\windows\te
 1. **退出 SteamVR、Business Streaming DP 和 Steam 客户端。** Steam 会占用驱动文件。
 2. 双击 `src\windows\patch_driver.bat`。在 UAC 弹窗点 **「是」**。脚本会自动找驱动、备份、打补丁并复核；如果找不到驱动，它会问你路径，也可以用 `-Dll <DLL路径>` 参数。
 
-### 2. 每次开机：注入头显
+### 2. 注入头显
+
+#### A. 临时 Root 方案（重启失效）
 
 1. 在头显里打开 **设置 → 开发者选项**。**打开 adb**（「USB 调试」或「无线调试」）。该设备免授权，无线调试无需配对。
 2. 连接头显：用 **USB 线**直连，或让头显和 PC 处在同一个网络，PC 开热点最简单。插了线时脚本就走线，不会自己改用无线。
@@ -70,6 +72,28 @@ PC 上不需要安装 adb，没有的话脚本会把它下载到 `src\windows\te
 > ```
 >
 > 机制见 [`docs/notes/09-termux.md`](docs/notes/09-termux.md)。只想推文件、不提权也不注入？双击 `src\windows\push.bat`。
+
+#### B. 永久 Root 方案
+
+> [!WARNING]
+>
+> 注意：此方案当前为实验性方案。本人还没给手头的设备解锁 Bootloader，因此尚未在真机上测试。
+>
+> 此操作有一定门槛，只推荐了解相关知识的用户使用。本项目不对你的设备出问题作担保。
+
+> [!CAUTION]
+>
+> 解锁前请先查看 `设置 → 开发者 → 企业设置 → 设备信息 → 设备密钥` 是否为 `seksa`。
+>
+> `ksa` 设备无法解锁，因为刷入工程 ABL 会砖。刷回原厂 ABL 可恢复。（此结论来自教程视频评论区，尚未实际验证）
+>
+> 建议备份原厂 ABL 与 Boot 分区，方便救砖。
+
+使用 [more-picohaxx-tool](https://github.com/chaixshot/more-picohaxx-tool) 解锁设备 Bootloader，也需一并安装 Magisk。
+
+模块只对 PUI 5.9.9（build `202409100313`）有效。安装时会校验头显固件，不符即中止。
+
+从仓库 [Releases](https://github.com/lgc2333/pico3-dp-touch-patch/releases/latest) 下载最新的 Magisk 模块安装即可。装好后重启头显，模块才会生效。
 
 ## 想把头显端「企业串流」换回 1.2.10？
 
@@ -91,13 +115,13 @@ PC 端也要换版本时，脚本会先问你要不要下载安装包（约 211 
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | PC 驱动                                               | 把同目录的 `driver_pico.dll.orig` 复制回 `driver_pico.dll`。或重装 DP 驱动。                            |
 | profile、手柄模型、RVRPlugin.ini、头显 profile 的小修 | 把同目录的 `*.orig` 复制回同名文件。`pico_hmd_profile.json` 是脚本新建的，删掉即可。                    |
-| 头显 root 与注入                                      | 重启后失效。也可以运行 `picohaxx -unroot`。                                                             |
+| 头显 root 与注入                                      | 临时 root：重启后失效，也可以运行 `picohaxx -unroot`。永久 root：在 Magisk 里关掉模块并重启。           |
 | 推送到头显的文件                                      | 删除 `/data/local/tmp/{frida-inject,hook.js,start_touch.sh}`、`~/pico_touch` 和 `$PREFIX/bin/dptouch`。 |
 
 ## 常见问题
 
-- **每次开机都要重跑吗？** 是。root 是临时的，它只改内存，不碰系统分区，重启后失效。
-- **会永久损坏头显吗？** 头显侧只改内存，PC 侧只改驱动自带的文本文件和一个 DLL，脚本会自动备份。
+- **每次开机都要重跑吗？** 临时 root 是，它只改内存，不碰系统分区，重启后失效。永久 root 装模块后不用重跑，但该方案尚未在真机上验证。
+- **会永久损坏头显吗？** 临时 root 只改内存。永久方案要解锁 Bootloader、刷 `boot`，操作失败可能无法开机。PC 侧只改驱动自带的文本文件和一个 DLL，脚本会自动备份。
 - **注入后能拔线吗？** 能。注入在头显本地运行。
 - **升级固件后还能用吗？** 不一定，新固件可能需要重新适配，见 [`docs/notes/06-root.md`](docs/notes/06-root.md)。
 
@@ -107,7 +131,7 @@ PC 端也要换版本时，脚本会先问你要不要下载安装包（约 211 
 
 ```mermaid
 flowchart LR
-    A["头显 pxrstreamingservice<br/>GetControllerKeyData<br/>controller_data_t +32/+36/+40/+44"] -->|Frida hook<br/>写进 HID 键值字 bit1/3/5/7| B["/dev/hidg0 USB"]
+    A["头显 pxrstreamingservice<br/>GetControllerKeyData<br/>controller_data_t +32/+36/+40/+44"] -->|头显 hook（Frida / 模块 shim）<br/>写进 HID 键值字 bit1/3/5/7| B["/dev/hidg0 USB"]
     B --> C["PC driver_pico.dll<br/>补丁"]
     C --> D["/input/*/touch"]
     C --> F["/input/skeleton/*<br/>31 根手指骨"]
@@ -126,10 +150,15 @@ flowchart LR
 
 本仓库的代码与文档以 [WTFPL v2](LICENSE)（Do What The Fuck You Want To Public License）发布。本项目使用以下第三方组件：
 
-- [`frida`](https://frida.re/) —— 注入框架。
-- [`picohaxx`](https://github.com/264312431/picohaxx) —— Qualcomm Adreno/KGSL 提权（Neo 3 适配）。
+- [`frida`](https://frida.re/)：注入框架。
+- [`picohaxx`](https://github.com/264312431/picohaxx)：Qualcomm Adreno/KGSL 提权（Neo 3 适配）。
 
-各组件遵循其原始许可。本项目不分发 PICO 的驱动 DLL 或 APK。`src\windows\src\driver_patch\dp_skeleton_payload.bin` 里的骨架代码来自 PICO v2 串流驱动的 `driver_pico.dll`。这段代码的权利归 PICO，仅供个人设备修复使用。
+各组件遵循其原始许可。
+
+除以下例外，本项目不分发 PICO 其他的驱动 DLL 或 APK。这些内容权利仍归 PICO，仅供个人设备修复使用：
+
+- `src\windows\src\driver_patch\dp_skeleton_payload.bin`：其骨架代码来自 PICO v2 串流驱动的 `driver_pico.dll`
+- `src\magisk\tools\resources\libpxrstreamingservice.so`：PICO 系统库原件，打包时现场生成模块里用的补丁库。
 
 ## 免责声明
 

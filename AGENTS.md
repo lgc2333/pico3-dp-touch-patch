@@ -1,6 +1,6 @@
 # AGENTS.md
 
-PICO Neo 3 Pro（企业版）在「Business Streaming DP 直连」下补回手柄电容触摸：头显端 Frida hook + PC 驱动补丁。面向用户的说明在 `README.md`（中文）/ `README.en.md`（英文，与前者逐节同步）；完整逆向记录在 `docs/`。
+PICO Neo 3 Pro（企业版）在「Business Streaming DP 直连」下补回手柄电容触摸：头显端 hook（Frida；永久 root 后改用 Magisk 模块）+ PC 驱动补丁。面向用户的说明在 `README.md`（中文）/ `README.en.md`（英文，与前者逐节同步）；完整逆向记录在 `docs/`。
 
 ## Structure
 
@@ -23,22 +23,31 @@ src/
   shared/             两端共用的设备端脚本
     hook.js           Frida 脚本：键值字 bit1/3/5/7 ← controller_data_t +32/+36/+40/+44
     start_touch.sh    幂等启动（检查 /proc/<pid>/maps 是否已有 frida-agent）
+  magisk/             永久 root（解锁 Bootloader + Magisk）后的头显端方案：模块 + 无 Frida 的 native shim；见 `docs/notes/10`、`11`
+    module.prop / customize.sh / META-INF/   Magisk 模块骨架（与官方模板一致）
+    shim/picotouch_shim.c   Android 10 没有 `wrap.` ⇒ 由库里补的 DT_NEEDED 带进 pxrstreamingservice，只打 GOT（不碰代码页）
+    tools/                  build_module.ps1（打包：找 NDK、编译 shim、补 DT_NEEDED、打 zip）+ inject_needed.py + vendor_lib.sha256（原厂库指纹，全仓库只此一份）
+    tools/resources/        原厂 libpxrstreamingservice.so（**入库**）；补丁库与 shim 都是构建产物，不入库
+.github/workflows/    build-magisk-module.yml：手动 Run workflow 打 Magisk 模块，产物走 artifact
 scripts/              仓库工具（不被脚本运行期依赖）
   format_ps.ps1       按本仓库约定格式化 .ps1（默认风格 + 行尾注释 2 空格 + 文件头只判定只警告）
-docs/notes/           逆向笔记 01 → 09（设备 / HID 协议 / 链路 / 驱动 `04-driver.md` + `04_a`–`04_g` / 注入 / root / 工具 / 死路 / Termux）
+  lint_ps.ps1         对三个 .ps1 目录跑 PSScriptAnalyzer；有问题 exit 1
+docs/notes/           逆向笔记 01 → 11（设备 / HID 协议 / 链路 / 驱动 `04-driver.md` + `04_a`–`04_g` / 注入 / root / 工具 / 死路 / Termux / 永久 root `10` / Magisk 模块 `11`）
   artifacts/          笔记引用的分析脚本（骨架 payload、app 骨架探针、更新器钩子、摇杆查看器）；一次性探针用完就删
 temp/                 本地工作区（安装了原始材料）；`src/*/temp/` 是各脚本的运行期缓存（依赖二进制、`.headset_ip`）。两级都靠 `temp/` 一条规则忽略
 ```
 
 ## Commands
 
-入口全在仓库根 `package.json`（`pnpm run` / `npm run` 均可）；本仓库无可构建产物。
+入口全在仓库根 `package.json`（`pnpm run` / `npm run` 均可，`pnpm <脚本名>` 省掉 `run`）；本仓库没有可提交的构建产物，Magisk 模块就地打进 `temp/magisk/`。
 
 ```powershell
 pnpm run check        # 全跑：shellcheck + PS（format→ParseFile + PSScriptAnalyzer）+ node --check + prettier -c
 pnpm run check:ps     # 只跑 PS 那两件（规则裁剪及理由见仓库根 PSScriptAnalyzerSettings.psd1）
 pnpm run fmt:ps       # 就地格式化 .ps1（只动空白；文件头逐字节保留、层级只警告）
 pnpm run fmt:md       # 文档就地格式化（prettier）
+pnpm build:magisk     # 打包 Magisk 模块到 temp/magisk/（现场编译 shim + 补 DT_NEEDED）
+pwsh -File src/magisk/tools/build_module.ps1   # 同上，Linux CI 用这条（要 uv 与 NDK）
 pnpm run deps         # 联网拉依赖二进制到 src/windows/temp/（不入库）
 pnpm run device:all   # 设备只读验证：id / seccomp / hook / kit / logs（一个探针一条 adb 命令）
 ```
@@ -47,6 +56,7 @@ pnpm run device:all   # 设备只读验证：id / seccomp / hook / kit / logs（
 
 ```sh
 sh -n src/termux/dptouch.sh src/termux/install.sh src/shared/start_touch.sh   # POSIX 语法（shellcheck 也会报语法错）
+uvx --from actionlint-py actionlint .github/workflows/build-magisk-module.yml   # 校验 workflow
 ```
 
 ## 设备端（动真机时看这里）
@@ -80,11 +90,17 @@ adb shell 'ls -la /data/data/com.termux/files/home/pico_touch; ls -l /data/data/
 - Termux 的 adb 包坏了（`CANNOT LINK EXECUTABLE`）是「必挂的 FATAL」第一嫌疑 ⇒ `dptouch` 发现 adb 不可用就自己 `pkg update/upgrade` + 装 `android-tools`；正常时只 `adb version`，不碰 `pkg`。见 `06-root.md`。
 - Termux 是 app 进程、带不可撤销的 seccomp ⇒ 里面跑 `frida-inject` 会被 SIGSYS 打死（`rc=159`），所以整条链借 adbd（init 起，`Seccomp: 0`）。见 `09-termux.md`。
 
+## Workflow Skills
+
+使用 `npx skills experimental_install` 安装工作区 skill。
+
 ## Rules
 
 ### 编码与文件
 
 - 编码 / 行尾以 `.editorconfig` + `.gitattributes` 为准：`.ps1` 含中文必须 BOM（否则 PS 5.1 按 GBK 读会乱码）、`.bat` 无 BOM + CRLF（cmd 见到 LF 会把注释当命令执行）、`sh`/`js` 用 LF —— 别绕开这两处配置。
+- `.ps1` 改完先看头 3 个字节还是不是 `EF BB BF`：编辑工具常把它吃掉，PS 5.1 随即按 GBK 读，中文全乱、`ParseFile` 直接报错。
+- 从 pwsh 里经 pnpm 调 `powershell` 时，继承的 `PSModulePath` 把 PS7 的模块根排在前面，5.1 会加载到 PS7 的副本 ⇒ `Get-FileHash` / `Invoke-Formatter` / `Invoke-ScriptAnalyzer` 全部消失。所以 pnpm 入口的 `.ps1`（`build_module.ps1`、`format_ps.ps1`、`lint_ps.ps1`、`device_probe.ps1`）顶部都有一段「5.1 时把 `PSModulePath` 还原成自己三个根」的守卫，别删。
 - `.bat` 只是薄入口（`powershell -File … %*`，最多再跟个 `pause`），逻辑放实现脚本里。
 - Prettier（文档，配置，脚本，`pnpx prettier -cw`） / Ruff（Python，`uvx ruff {check,format}`） / PSScriptAnalyzer（PowerShell，`Invoke-ScriptAnalyzer` / `Invoke-Formatter`） 支持处理的文件，改完用对应工具检查及格式化。
   - `.ps1` 排版 = `Invoke-Formatter` 默认风格（别加自定义 formatter settings）；行尾注释与代码之间固定 2 空格；文件头块注释内部**顶格起、每级 4 空格**（0/4/8…）。
@@ -113,6 +129,7 @@ adb shell 'ls -la /data/data/com.termux/files/home/pico_touch; ls -l /data/data/
 - `get_deps.ps1`（PC 侧唯一的依赖来源）必须保持逐字节校验（上游 md5 + 补丁点原字节），任一不符即中止、不写入。
 - 驱动补丁只对 md5 `9017439d560747678b4550fcf6726808` 的 `driver_pico.dll` 有效；写入前必须校验原字节，失败即中止。
 - 握把补丁必须**成对**改：`[controller]` 位姿、17 个 OBJ 顶点、两份 JSON 的 `motion`（点 `R·p - t`、向量 `R·v`）是同一组参数，只从 `.orig` 重算；厂商 sha256、厂商原值与目标值都卡在 `patch_driver.ps1`，任一不符即中止 —— 指纹一处都别放宽。摇杆的 `center` / `rotate_xyz` / 按下符号另有约定，改前先读 `04_g`。
+- Magisk 模块只对 PUI 5.9.9-202409100313 有效：设备端 `customize.sh` 按 `ro.pvr.internal.version` / `confirm_smartisan_version` 卡固件（**别退回用库 sha256** —— 覆盖安装时读到的是模块挂载的补丁库，会把任何固件都放过去），打包端 `build_module.ps1` 按 `tools/vendor_lib.sha256` 卡原厂库，两处都不许放宽。
 - 骨架 payload 只对 v2 的 `driver_pico.dll`（sha256 `d851b7d1…`）有效，且段 RVA 固定 = DP 的 `SizeOfImage`（`0xAB000`）；`docs/notes/artifacts/build_dp_skeleton_payload.py` 卡源 DLL 的 sha256，`patch_driver.ps1` 卡段数 / `SizeOfImage` / 段表 / 两个挂钩点原字节，任一不符即中止 —— 别放宽这几处。
 - 固件版本决定 `picohaxx` 的内核符号偏移；换固件须重取符号（见 `docs/notes/06-root.md`），不要假设偏移通用。
 - 从 v2 抄常量 / 分支前先确认落在哪个「型号 × 形态」：v2 有 4 种控制器 × 手柄/手部追踪两种形态，同一标志位常同时决定设备身份与驱动行为。三问与矩阵见 `04-driver.md` 的「v2 移植约定」。

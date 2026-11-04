@@ -1,0 +1,40 @@
+name: Build Magisk module
+
+# 手动触发：Actions 页面点 Run workflow；产物在该次运行的 artifact 里。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          # r28c = 28.2.13676358，与本机一致；换版本要同时确认 shim 的编译选项
+          ndk-version: r28c
+          add-to-path: false
+
+      - name: Build module
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: pwsh -NoProfile -File src/magisk/tools/build_module.ps1
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pico_dp_touch
+          path: temp/magisk/pico_dp_touch.zip
+          if-no-files-found: error

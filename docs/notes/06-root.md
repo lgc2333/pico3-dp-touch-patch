@@ -21,6 +21,8 @@ uid=2000(shell)   Enforcing   service.adb.root=0   adbd 属主=shell
 
 ⇒ **`persist.pvr.adb.root=1` 不会让 adbd 以 root 运行**，picohaxx 每次开机都必需，没有捷径。
 
+> 永久 root 是另一条路（解 BL + Magisk），见 [`10-permanent-root.md`](10-permanent-root.md)。
+
 ## `-- cmd` 与 adbd 无关：提权在进程内完成（2026-10-05 读源码核实）
 
 上游 `root.c` 的 `postExploit()`：

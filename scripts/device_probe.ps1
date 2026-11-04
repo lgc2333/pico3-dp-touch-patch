@@ -32,6 +32,16 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+# 从 pwsh 里经 pnpm 调 powershell 时，继承的 PSModulePath 把 PS7 的模块根排在前面，
+# 5.1 会加载到 PS7 的副本 ⇒ Get-FileHash / Invoke-Formatter 这些直接消失。5.1 只认自己那三个根。
+if ($PSVersionTable.PSVersion.Major -lt 6 -and $env:PSModulePath) {
+    $env:PSModulePath = @(
+        (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'),
+        (Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules'),
+        (Join-Path $PSHOME 'Modules')
+    ) -join [System.IO.Path]::PathSeparator
+}
+
 . "$PSScriptRoot\..\src\windows\src\_utils.ps1"
 
 $P = Get-RepoPaths -ScriptDir $PicoUtilsDir

@@ -28,6 +28,24 @@ end_of_line = lf
 indent_style = space
 indent_size = 4
 
+# Magisk 模块的安装脚本没有扩展名，与 sh 同样按 LF 处理
+[src/magisk/META-INF/**]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+
+[*.prop]
+charset = utf-8
+end_of_line = lf
+
+# GitHub Actions workflow
+[*.{yml,yaml}]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+
 [*.{js,json}]
 charset = utf-8
 end_of_line = lf

@@ -16,7 +16,7 @@
 
 All six touch points work: A/B/X/Y, the triggers and the stick tops. When you touch a control, the fingers in games also move.
 
-- The headset side changes memory only. A reboot removes the change. Run the tool again after each reboot.
+- The headset side changes memory only. A reboot removes the change. With temporary root, run the tool again after each reboot. With permanent root, the module keeps the change (experimental, see section B).
 - The PC side changes only files that the driver supplies. You can revert all changes in one step.
 
 ## What else the patch fixes
@@ -56,7 +56,9 @@ You do not need adb on the PC. If adb is missing, the scripts download it to `sr
 1. **Quit SteamVR, Business Streaming DP and the Steam client.** Steam keeps the driver files open.
 2. Double-click `src\windows\patch_driver.bat`. Click **Yes** in the UAC prompt. The script finds the driver, makes a backup, applies the patch and verifies the result. If the script cannot find the driver, it asks you for the path. You can also use the `-Dll <path>` parameter.
 
-### 2. Each boot: inject into the headset
+### 2. Inject into the headset
+
+#### A. Temporary root (lost on reboot)
 
 1. In the headset, open **Settings → Developer options**. **Turn on adb** ("USB debugging" or "Wireless debugging"). This device needs no authorization. Wireless adb needs no pairing.
 2. Connect the headset. Use a **USB cable**, or connect the headset and the PC to the same network. A PC hotspot is a simple option. If a cable is connected, the script uses the cable. The script does not switch to wireless.
@@ -70,6 +72,28 @@ You do not need adb on the PC. If adb is missing, the scripts download it to `sr
 > ```
 >
 > For details, refer to [`docs/notes/09-termux.md`](docs/notes/09-termux.md). Do you want to push the files only, without root or injection? Double-click `src\windows\push.bat`.
+
+#### B. Permanent root
+
+> [!WARNING]
+>
+> This path is experimental. The author has not unlocked the bootloader on the device at hand yet, so no test covers it.
+>
+> This path has a higher bar. Use it only if you know the related knowledge. This project makes no guarantee about your device.
+
+> [!CAUTION]
+>
+> Before you unlock, open `Settings → Developer → Enterprise settings → Device info → Device key` and check that the value is `seksa`.
+>
+> A `ksa` device cannot be unlocked, because an engineering ABL bricks it. Flashing the factory ABL back recovers the device. (This comes from the tutorial video comments and is not verified yet.)
+>
+> Back up the factory ABL and boot partitions first, so that you can recover the device.
+
+Use [more-picohaxx-tool](https://github.com/chaixshot/more-picohaxx-tool) to unlock the bootloader. Install Magisk as part of that process.
+
+The module supports PUI 5.9.9 (build `202409100313`) only. The installer checks the headset firmware and stops on a mismatch.
+
+Then download the latest Magisk module from the repository [Releases](https://github.com/lgc2333/pico3-dp-touch-patch/releases/latest) and install it. Reboot the headset after the install, so that the module takes effect.
 
 ## Want to downgrade headset-side Business Streaming to 1.2.10?
 
@@ -91,13 +115,13 @@ Then pull the triggers and push the sticks. Each trigger must turn about its own
 | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | PC driver                                                            | Copy `driver_pico.dll.orig` from the same folder over `driver_pico.dll`. Or reinstall the DP driver.                                         |
 | The profile, controller model, `RVRPlugin.ini` and HMD profile fixes | Copy each `*.orig` file from the same folder over the file with the same name. The script creates `pico_hmd_profile.json`; delete this file. |
-| Headset root and injection                                           | A reboot removes them. You can also run `picohaxx -unroot`.                                                                                  |
+| Headset root and injection                                           | Temporary root: a reboot removes them, or run `picohaxx -unroot`. Permanent root: disable the module in Magisk and reboot.                   |
 | Files that the script pushes to the headset                          | Delete `/data/local/tmp/{frida-inject,hook.js,start_touch.sh}`, `~/pico_touch` and `$PREFIX/bin/dptouch`.                                    |
 
 ## FAQ
 
-- **Do I need to run the tool again after each boot?** Yes. Root is temporary. It changes memory only and does not touch the system partitions. A reboot removes it.
-- **Can the tool damage the headset permanently?** The headset side changes memory only. The PC side changes text files that the driver supplies and one DLL. The script makes backups automatically.
+- **Do I need to run the tool again after each boot?** With temporary root, yes. It changes memory only and does not touch the system partitions, so a reboot removes it. With permanent root, the module stays active, but no test covers that path yet.
+- **Can the tool damage the headset permanently?** With temporary root, the headset side changes memory only. The permanent path unlocks the bootloader and flashes `boot`; a failed operation can make the headset unbootable. The PC side changes text files that the driver supplies and one DLL. The script makes backups automatically.
 - **Can I disconnect the cable after the injection?** Yes. The injection runs on the headset.
 - **Does the tool work after a firmware update?** Not always. A new firmware can need a new adaptation. Refer to [`docs/notes/06-root.md`](docs/notes/06-root.md).
 
@@ -107,7 +131,7 @@ The touch data was always there in the headset's controller service — the DP p
 
 ```mermaid
 flowchart LR
-    A["headset pxrstreamingservice<br/>GetControllerKeyData<br/>controller_data_t +32/+36/+40/+44"] -->|Frida hook<br/>writes HID key value word bit1/3/5/7| B["/dev/hidg0 USB"]
+    A["headset pxrstreamingservice<br/>GetControllerKeyData<br/>controller_data_t +32/+36/+40/+44"] -->|headset hook (Frida / module shim)<br/>writes HID key value word bit1/3/5/7| B["/dev/hidg0 USB"]
     B --> C["PC driver_pico.dll<br/>patch"]
     C --> D["/input/*/touch"]
     C --> F["/input/skeleton/*<br/>31 finger bones"]
@@ -126,10 +150,15 @@ The full reverse-engineering notes are in [`docs/notes/`](docs/notes/) (written 
 
 This repository releases its code and documentation under [WTFPL v2](LICENSE) (Do What The Fuck You Want To Public License). This project uses these third-party components:
 
-- [`frida`](https://frida.re/) — injection framework.
-- [`picohaxx`](https://github.com/264312431/picohaxx) — Qualcomm Adreno/KGSL privilege escalation (Neo 3 port).
+- [`frida`](https://frida.re/): injection framework.
+- [`picohaxx`](https://github.com/264312431/picohaxx): Qualcomm Adreno/KGSL privilege escalation (Neo 3 port).
 
-Each component keeps its original license. This project does not distribute PICO driver DLLs or APKs. The skeleton code in `src\windows\src\driver_patch\dp_skeleton_payload.bin` comes from the `driver_pico.dll` of PICO's v2 streaming driver. The rights to this code stay with PICO. The code is for personal device repair only.
+Each component keeps its original license.
+
+Except for the items below, this project does not distribute other PICO driver DLLs or APKs. The rights to these files stay with PICO. They are for personal device repair only:
+
+- `src\windows\src\driver_patch\dp_skeleton_payload.bin`: the skeleton code comes from the `driver_pico.dll` of PICO's v2 streaming driver.
+- `src\magisk\tools\resources\libpxrstreamingservice.so`: the unmodified PICO system library. The build uses it to generate the patched library for the module.
 
 ## Disclaimer
 

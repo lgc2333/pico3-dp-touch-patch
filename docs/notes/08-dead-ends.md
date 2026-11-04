@@ -74,7 +74,7 @@ SHA-256 `dc30289e0a61447d03c95d15e5acf63e18d109d545a766b1208f6b53cbdcd482`，
 （理论上可用 picohaxx 的 `KERNEL_DS` 改内核内存里的 `sig_enforce`，
 但**仍需 modversions 匹配的 `.ko`**，死结不变。）
 
-## 四、改 `/system` / `boot` —— 硬砖级
+## 四、改 `/system` / `boot` —— 锁 BL 时硬砖级
 
 ```
 ro.boot.veritymode        = enforcing   ← dm-verity 强制校验
@@ -89,7 +89,9 @@ mount: /dev/block/dm-6 on /vendor (ro)
 - 静态 patch `services.jar` → verity enforcing → 改完直接无法开机
 - **单槽** ⇒ 砖了没有回退
 
-⇒ 改 `boot` / `/system` 一律是**硬砖级**风险，彻底排除。
+⇒ **Bootloader 锁定时**改 `boot` / `/system` 一律是**硬砖级**风险，彻底排除。本节与第三节的结论都只在这个前提下成立。
+
+> 解锁 Bootloader 后，`boot` 可以刷 Magisk 补丁版拿永久 root（见 [`10-permanent-root.md`](10-permanent-root.md)）；`/system` 仍用模块 overlay，不要直接改分区 —— verity 与单槽这两条风险在解锁后依然存在。
 
 ## 五、官方「注入键值」通道 —— 本机没开
 
@@ -99,7 +101,7 @@ mount: /dev/block/dm-6 on /vendor (ro)
 
 **实测：`getShareMemory` 失败，函数返回 `-2`** ⇒ 控制器服务没开这条通道 ⇒ 用不了。
 
-## 六、最终为什么选「Frida hook + 驱动补丁」
+## 六、最终为什么选「Frida hook + 驱动补丁」（锁 BL 前提）
 
 | 约束                          | 结论                                         |
 | ----------------------------- | -------------------------------------------- |
@@ -110,4 +112,5 @@ mount: /dev/block/dm-6 on /vendor (ro)
 | **root + 进程内 hook**        | ✅ **可行**（picohaxx 纯内核提权，不碰分区） |
 | **PC 驱动补丁**               | ✅ 可备份可还原                              |
 
-⇒ 唯一零砖风险的组合：**临时 root + `frida-inject` 进程内 hook + 驱动补丁**。
+⇒ 锁 BL 前提下唯一零砖风险的组合：**临时 root + `frida-inject` 进程内 hook + 驱动补丁**。
+解锁 BL 后还有另一条：**永久 root（Magisk）+ 模块内 shim**，见 [`10-permanent-root.md`](10-permanent-root.md) 与 [`11-magisk-module.md`](11-magisk-module.md)。

@@ -6,8 +6,13 @@
 *.js  text eol=lf
 *.json text eol=lf
 *.md  text eol=lf
+*.prop text eol=lf
+*.yml text eol=lf
+
+src/magisk/META-INF/** text eol=lf
 
 # 二进制（若日后放进仓库）不做文本处理
 *.dll binary
 *.bin binary
+*.so  binary
 *.xz  binary
