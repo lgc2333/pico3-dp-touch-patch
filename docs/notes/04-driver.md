@@ -31,6 +31,16 @@ D:\Program Files\BusinessStreaming\
 | UW `driver\bin\win64\driver_pico.dll`                | `f61949bf7afb4809eaa02daa18be7995` |
 | v2.1.2 `app\openvr_driver\bin\win64\driver_pico.dll` | `e6d408b2590042c3c7f796b694ffc404` |
 
+### v2.1.2 安装包
+
+| 产物      | 地址                                                                                       | 大小          | 内容                                                                  |
+| --------- | ------------------------------------------------------------------------------------------ | ------------- | --------------------------------------------------------------------- |
+| PC 安装包 | <https://p9-arcosite.byteimg.com/obj/tos-cn-i-goo7wpa0wc/86d451f4739a406b9431b88b7371faf5> | 239,399,608 B | NSIS 外壳，`7z x` 出 `$PLUGINSDIR/app-64.7z`，解开就是 `app/`         |
+| 头显包    | <https://p9-arcosite.byteimg.com/obj/tos-cn-i-goo7wpa0wc/bd50b2aedcd64c7fbcf767fddd073428> | 20,611,800 B  | APK（后缀是 zip）：`classes.dex`、`resources.arsc`、`lib/arm64-v8a/*` |
+
+- `app/Business Streaming.exe` 的 FileVersion 是 `2.1.2`；驱动在 `app/openvr_driver/bin/win64/driver_pico.dll`，md5 与上表一致。
+- 地址记录于 2026-11-04，是 PICO 对象存储的直链，可能失效。
+
 ## v2 移植约定（抄 v2 前先看）
 
 > 从 v2 搬常量 / 分支 / 资源前必须确认的约定；手序号那条的现场记录在 [04.d](04_d-driver-skeleton.md) 的「真凶」一节，profile / 绑定侧的现状在 [04.a](04_a-driver-inputs.md)。
@@ -92,6 +102,7 @@ v2 支持 4 种控制器 + 每种还有「手柄 / 手部追踪」两种形态�
 | 游戏里手柄偏 4.28cm / 10.29°  | 驱动读 host 发的 `apprun` 标志给位姿加修正；补丁把 `call atoi` 换成 `xor eax,eax`                              | 04.e        |
 | 虚拟手不在手心 / 手臂伸不直   | 驱动把 device pose 报在跟踪环；`[controller]` 偏移把位姿挪到握把，顶点与活动部件支点反向补偿让模型留在物理位置 | 04.g        |
 | SteamVR 里 menu 键没反应      | profile 少个斜杠（厂商笔误）+ 头显 profile 漏发                                                                | 04.a        |
+| SteamVR 里没有手柄电量        | 驱动从不声明「能报电量」，头显也没把电量放进 HID 报文                                                          | 12          |
 | 曾经以为的 9.70cm「模型偏移」 | **假线索**：9.70 与 `handgrip` 的 0.097 只是数值巧合，几何 / 挂接不参与                                        | 04.f        |
 
 ## 记录约定

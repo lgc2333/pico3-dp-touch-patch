@@ -70,6 +70,8 @@ __write_chk(fd_hidg0, v51, 64, 64);
 | `[55..62]`      | `data[54..61]` | 时间戳                       |
 | `[63]`          | `data[62]`     | lens separation              |
 
+> `report[47]` / `report[48]` 的用途未定；手柄电量上报计划用这两字节承载，见 [12](12-controller-battery.md)。
+
 > 日志串 `Controller button state [%d,%d]` 打的是 `v190[16], v190[17]` —— 看着像「两只手」，
 > 其实是**同一个 16 位键值字的两个字节**。
 

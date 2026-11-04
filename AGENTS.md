@@ -32,7 +32,7 @@ src/
 scripts/              仓库工具（不被脚本运行期依赖）
   format_ps.ps1       按本仓库约定格式化 .ps1（默认风格 + 行尾注释 2 空格 + 文件头只判定只警告）
   lint_ps.ps1         对三个 .ps1 目录跑 PSScriptAnalyzer；有问题 exit 1
-docs/notes/           逆向笔记 01 → 11（设备 / HID 协议 / 链路 / 驱动 `04-driver.md` + `04_a`–`04_g` / 注入 / root / 工具 / 死路 / Termux / 永久 root `10` / Magisk 模块 `11`）
+docs/notes/           逆向笔记；索引见 `00-index.md`
   artifacts/          笔记引用的分析脚本（骨架 payload、app 骨架探针、更新器钩子、摇杆查看器）；一次性探针用完就删
 temp/                 本地工作区（安装了原始材料）；`src/*/temp/` 是各脚本的运行期缓存（依赖二进制、`.headset_ip`）。两级都靠 `temp/` 一条规则忽略
 ```
